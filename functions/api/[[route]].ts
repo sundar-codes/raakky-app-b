@@ -65,8 +65,65 @@ export const onRequest: any = async (context: { request: Request; env: Env; para
       }
     }
 
+    if (path.startsWith('/products/') && method === 'GET') {
+      const productId = path.replace('/products/', '');
+      if (env.DB) {
+        const product: any = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(productId).first();
+        if (product) {
+          const { results: variants } = await env.DB.prepare(
+            'SELECT * FROM product_variants WHERE product_id = ?'
+          ).bind(productId).all();
+          product.variants = variants;
+          return new Response(JSON.stringify(product), { headers: corsHeaders });
+        }
+      }
+    }
+
+    if (path === '/auth/send-otp' && method === 'POST') {
+      return new Response(JSON.stringify({ success: true, message: 'OTP sent successfully' }), { headers: corsHeaders });
+    }
+
+    if (path === '/auth/verify-otp' && method === 'POST') {
+      const body: any = await request.json().catch(() => ({}));
+      const phone = body.phone || '9876543210';
+      return new Response(
+        JSON.stringify({
+          success: true,
+          token: `jwt_live_${Date.now()}`,
+          customer: {
+            id: `cust_${phone}`,
+            phone,
+            name: 'Valued Customer',
+            isPhoneVerified: true,
+          },
+        }),
+        { headers: corsHeaders }
+      );
+    }
+
     if (path === '/orders' && method === 'POST') {
-      return new Response(JSON.stringify({ success: true, orderId: `ord_${Date.now()}` }), { headers: corsHeaders });
+      const body: any = await request.json().catch(() => ({}));
+      const orderId = `ord_${Date.now()}`;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          orderId,
+          orderNumber: `RK-${Math.floor(100000 + Math.random() * 900000)}`,
+          status: 'PENDING',
+          message: 'Order received at kitchen counter',
+        }),
+        { headers: corsHeaders }
+      );
+    }
+
+    if (path.startsWith('/orders/') && method === 'GET') {
+      const orderId = path.replace('/orders/', '');
+      if (env.DB) {
+        const order: any = await env.DB.prepare('SELECT * FROM orders WHERE id = ? OR order_number = ?').bind(orderId, orderId).first();
+        if (order) {
+          return new Response(JSON.stringify(order), { headers: corsHeaders });
+        }
+      }
     }
 
     return new Response(JSON.stringify({ message: 'Raakky Chicken API endpoint ready' }), { headers: corsHeaders });
