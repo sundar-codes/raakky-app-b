@@ -5,10 +5,9 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "raakky-db"
-database_id = "your-cloudflare-d1-database-id"
+database_id = "1e7c05c7-608d-4aee-8977-20dedb4fc005"
 
 [vars]
 ENVIRONMENT = "production"
-RAZORPAY_KEY_ID = "rzp_live_your_key_id"
 STORE_PHONE = "+919843599030"
 STORE_CITY = "Coimbatore"

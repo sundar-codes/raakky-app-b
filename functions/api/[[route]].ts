@@ -1,8 +1,9 @@
 interface Env {
   DB: any;
   BUCKET?: any;
-  RAZORPAY_KEY_ID?: string;
-  RAZORPAY_KEY_SECRET?: string;
+  STORE_PHONE?: string;
+  STORE_CITY?: string;
+  ENVIRONMENT?: string;
 }
 
 export const onRequest: any = async (context: { request: Request; env: Env; params: any }) => {
