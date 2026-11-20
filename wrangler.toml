@@ -1,0 +1,14 @@
+name = "raakky-customer-app"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "raakky-db"
+database_id = "your-cloudflare-d1-database-id"
+
+[vars]
+ENVIRONMENT = "production"
+RAZORPAY_KEY_ID = "rzp_live_your_key_id"
+STORE_PHONE = "+919843599030"
+STORE_CITY = "Coimbatore"
