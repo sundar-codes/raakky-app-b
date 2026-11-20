@@ -1,3 +1,5 @@
+# The Raakky Chicken - Production Customer Ordering App (App B)
+# Cloudflare Pages & D1 Database Binding
 name = "raakky-customer-app"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-11-01"
