@@ -1,11 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <rect x="12" y="12" width="76" height="76" rx="8" transform="skewX(-6)" fill="#d90429" stroke="#b80222" stroke-width="4"/>
-  <path d="M12 12h76v76H12z" fill="url(#flame-grad)" opacity="0.3" rx="8" transform="skewX(-6)"/>
-  <text x="50" y="68" font-family="'Barlow Condensed', Impact, sans-serif" font-weight="900" font-size="64" fill="#ffffff" text-anchor="middle" transform="skewX(-6)">R</text>
-  <defs>
-    <linearGradient id="flame-grad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ea580c"/>
-      <stop offset="1" stop-color="#d90429"/>
-    </linearGradient>
-  </defs>
+  <!-- Yellow Background Base -->
+  <rect x="2" y="2" width="96" height="96" rx="22" fill="#FFC72C" stroke="#E6A500" stroke-width="2"/>
+  <!-- Red Inner Circle -->
+  <circle cx="50" cy="50" r="41" fill="#D90429" stroke="#B80222" stroke-width="2"/>
+  <!-- Rooster 'R' Brand Image -->
+  <image href="/images/raakky-brand-badge.png" x="2" y="2" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
 </svg>

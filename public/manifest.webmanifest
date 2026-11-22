@@ -1,0 +1,27 @@
+{
+  "name": "The Raakky Chicken",
+  "short_name": "Raakky Chicken",
+  "description": "Order fresh broiler chicken cuts online in Coimbatore (Press Colony & nearby). Clean cuts, fast delivery, and store pickup.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FDFBF7",
+  "theme_color": "#D90429",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["food", "shopping"]
+}

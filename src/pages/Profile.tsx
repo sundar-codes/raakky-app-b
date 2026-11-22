@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   User,
   Phone,
@@ -11,7 +12,9 @@ import {
   CheckCircle2,
   ShieldCheck,
   Clock,
-  Sparkles
+  Sparkles,
+  Download,
+  QrCode
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -379,6 +382,42 @@ export const Profile: React.FC = () => {
               {isTamil ? 'முகவரிகள் எதுவும் சேமிக்கப்படவில்லை.' : 'No saved addresses yet.'}
             </p>
           )}
+        </div>
+
+        {/* Section 2.5: Install Mobile App / PWA */}
+        <div className="mb-6 rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/40 p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <img
+                src="/images/raakky-brand-badge.png"
+                alt="Raakky Logo"
+                className="w-12 h-12 object-contain rounded-2xl shadow-sm flex-shrink-0"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-heading text-base font-bold text-neutral-900">
+                    {isTamil ? 'ராக்கி சிக்கன் செயலியை நிறுவுங்கள்' : 'Install Raakky Chicken App'}
+                  </h3>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded-full">
+                    {isTamil ? 'எளிது' : '1-Tap'}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-600 mt-0.5">
+                  {isTamil
+                    ? 'உங்கள் மொபைல் முகப்புத் திரையில் சேருங்கள். நொடியில் நேரடி புதிய சிக்கன் ஆர்டர்!'
+                    : 'Add directly to your home screen for instant chicken ordering and status tracking.'}
+                </p>
+              </div>
+            </div>
+
+            <Link
+              to="/install"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-raakky-red px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark active:scale-95 transition-all flex-shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              <span>{isTamil ? 'நிறுவல் வழிமுறை' : 'Install / Download'}</span>
+            </Link>
+          </div>
         </div>
 
         {/* Section 3: Shop Help & Operating Hours */}

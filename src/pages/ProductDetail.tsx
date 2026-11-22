@@ -591,8 +591,8 @@ export const ProductDetail: React.FC = () => {
               </div>
 
               {/* IN-CARD ACTION BLOCK: QUANTITY STEPPER + DUAL BUTTONS ("Add to Cart" AND "Order Now") */}
-              {/* Visible above the fold on desktop without scrolling! */}
-              <div className="border-t border-stone-200 pt-3">
+              {/* Visible on Desktop only. Hidden on mobile because the floating sticky bottom bar handles it! */}
+              <div className="hidden sm:block border-t border-stone-200 pt-3">
                 <div className="flex items-center justify-between gap-3 mb-2.5">
                   {/* Stepper */}
                   <div className="flex items-center gap-2">

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Truck, Flame, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Truck, Flame, ShieldCheck, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useShop } from '../../contexts/ShopContext';
 
 export const PromoBannerCarousel: React.FC = () => {
+  const navigate = useNavigate();
   const { isTamil } = useLanguage();
   const { settings } = useShop();
 
@@ -50,6 +52,19 @@ export const PromoBannerCarousel: React.FC = () => {
       bgGradient: 'bg-gradient-to-r from-neutral-900 via-stone-850 to-neutral-950',
       iconBg: 'bg-neutral-800',
       icon: ShieldCheck,
+    },
+    {
+      id: 'mobile-app',
+      badgeEn: 'FAST 1-TAP ORDERING',
+      badgeTa: 'மொபைல் செயலி',
+      titleEn: 'Install Raakky Chicken On Your Phone',
+      titleTa: 'உங்கள் போனில் ராக்கி செயலியை நிறுவுங்கள்',
+      descEn: '1-tap ordering, live counter cut updates & zero storage needed',
+      descTa: 'நொடியில் நேரடி ஆர்டர், கடையின் நேரடி நிலவரம் மற்றும் குறைந்த நினைவகம்',
+      bgGradient: 'bg-gradient-to-r from-amber-600 via-orange-600 to-raakky-red',
+      iconBg: 'bg-white/20',
+      icon: Smartphone,
+      link: '/install',
     },
   ];
 
@@ -118,7 +133,14 @@ export const PromoBannerCarousel: React.FC = () => {
           return (
             <div
               key={banner.id}
-              className={`w-full flex-shrink-0 ${banner.bgGradient} text-white p-3.5 sm:p-5 flex items-center justify-between gap-3 min-h-[96px] sm:min-h-[120px]`}
+              onClick={() => {
+                if ('link' in banner && banner.link) {
+                  navigate(banner.link);
+                }
+              }}
+              className={`w-full flex-shrink-0 ${banner.bgGradient} text-white p-3.5 sm:p-5 flex items-center justify-between gap-3 min-h-[96px] sm:min-h-[120px] ${
+                'link' in banner && banner.link ? 'cursor-pointer active:opacity-95' : ''
+              }`}
             >
               {/* Text content */}
               <div className="space-y-1 sm:space-y-1.5 flex-1 min-w-0 pr-1">

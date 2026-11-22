@@ -18,9 +18,11 @@ export const Footer: React.FC = () => {
           {/* Column 1: Brand & Mission (lg:col-span-4) */}
           <div className="lg:col-span-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-raakky-red border-2 border-raakky-red-dark rounded-xl flex items-center justify-center text-white font-condensed font-extrabold text-2xl -skew-x-6 shadow-sm">
-                R
-              </div>
+              <img
+                src="/images/raakky-brand-badge.png"
+                alt="The Raakky Chicken"
+                className="w-10 h-10 object-contain rounded-xl shadow-sm"
+              />
               <div className="flex flex-col">
                 <span className="font-condensed font-black text-lg tracking-tight leading-none text-white uppercase">
                   THE RAAKKY
@@ -74,6 +76,11 @@ export const Footer: React.FC = () => {
               <li>
                 <Link to="/cart" className="hover:text-white transition-colors">
                   {t('nav.cart')}
+                </Link>
+              </li>
+              <li>
+                <Link to="/install" className="hover:text-white transition-colors flex items-center gap-1.5 text-amber-400 font-bold">
+                  <span>{isTamil ? '📱 செயலியை நிறுவுங்கள்' : '📱 Install Mobile App'}</span>
                 </Link>
               </li>
               <li>

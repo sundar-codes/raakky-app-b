@@ -21,6 +21,7 @@ import { Checkout } from './pages/Checkout';
 import { OrderStatus } from './pages/OrderStatus';
 import { OrderHistory } from './pages/OrderHistory';
 import { Profile } from './pages/Profile';
+import { InstallApp } from './pages/InstallApp';
 import { NotFound } from './pages/NotFound';
 
 export const App: React.FC = () => {
@@ -50,6 +51,8 @@ export const App: React.FC = () => {
                         <Route path="/order/:id" element={<OrderStatus />} />
                         <Route path="/orders" element={<OrderHistory />} />
                         <Route path="/profile" element={<Profile />} />
+                        <Route path="/install" element={<InstallApp />} />
+                        <Route path="/download" element={<InstallApp />} />
                         <Route path="*" element={<NotFound />} />
                       </Routes>
                     </main>
