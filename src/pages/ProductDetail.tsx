@@ -295,8 +295,8 @@ export const ProductDetail: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-28 sm:pb-16 pt-2 sm:pt-4 md:py-6">
-      <div className="mx-auto max-w-6xl px-3 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-stone-50 pb-28 sm:pb-16 pt-1.5 sm:pt-4 md:py-6">
+      <div className="mx-auto max-w-6xl px-2.5 sm:px-6 lg:px-8">
         
         {/* Desktop Breadcrumb Navigation */}
         <div className="hidden sm:flex mb-4 items-center justify-between">
@@ -337,15 +337,15 @@ export const ProductDetail: React.FC = () => {
                 }}
               />
 
-              {/* Mobile Back Button Only (NO redundant in-image cart - universal cart is in header) */}
-              <div className="sm:hidden absolute top-2.5 left-2.5 z-20">
+              {/* Mobile Back Button (Floats cleanly over top-left of hero image) */}
+              <div className="sm:hidden absolute top-3 left-3 z-20">
                 <button
                   type="button"
                   onClick={() => navigate(-1)}
-                  className="w-8 h-8 rounded-full bg-white/95 backdrop-blur-md shadow-md flex items-center justify-center text-stone-800 hover:text-raakky-red active:scale-90 transition-all"
+                  className="w-9 h-9 rounded-full bg-white/95 backdrop-blur-md shadow-md flex items-center justify-center text-stone-800 hover:text-raakky-red active:scale-90 transition-all border border-stone-200/60"
                   aria-label="Back"
                 >
-                  <ArrowLeft size={16} />
+                  <ArrowLeft size={18} />
                 </button>
               </div>
 
