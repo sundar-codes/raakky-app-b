@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <!-- Yellow Background Base -->
-  <rect x="2" y="2" width="96" height="96" rx="22" fill="#FFC72C" stroke="#E6A500" stroke-width="2"/>
-  <!-- Red Inner Circle -->
-  <circle cx="50" cy="50" r="41" fill="#D90429" stroke="#B80222" stroke-width="2"/>
+  <!-- Red Circular Badge -->
+  <circle cx="50" cy="50" r="48" fill="#D90429" stroke="#B80222" stroke-width="2"/>
   <!-- Rooster 'R' Brand Image -->
   <image href="/images/raakky-brand-badge.png" x="2" y="2" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
 </svg>

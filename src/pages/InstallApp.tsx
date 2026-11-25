@@ -49,7 +49,7 @@ export const InstallApp: React.FC = () => {
 
         {/* Hero Card with Brand Badge */}
         <div className="rounded-3xl bg-white border border-stone-200/90 p-6 sm:p-8 shadow-sm text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-raakky-red to-raakky-orange" />
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-raakky-red via-red-600 to-raakky-red-dark" />
 
           {/* Real Brand Badge with Yellow Base and Red Circle */}
           <div className="inline-block relative mb-4">

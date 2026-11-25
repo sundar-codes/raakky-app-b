@@ -67,7 +67,7 @@ export const Header: React.FC = () => {
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation - 3 Core Modules: Home, My Orders, Profile + App */}
           <nav className="hidden md:flex items-center gap-8">
             <Link
               to="/"
@@ -80,16 +80,6 @@ export const Header: React.FC = () => {
               {t('nav.home')}
             </Link>
             <Link
-              to="/shop"
-              className={`text-sm font-bold uppercase tracking-wider transition-colors ${
-                isActive('/shop')
-                  ? 'text-raakky-red'
-                  : 'text-neutral-600 hover:text-neutral-950'
-              }`}
-            >
-              {t('nav.shop')}
-            </Link>
-            <Link
               to="/orders"
               className={`text-sm font-bold uppercase tracking-wider transition-colors ${
                 isActive('/orders')
@@ -98,6 +88,16 @@ export const Header: React.FC = () => {
               }`}
             >
               {t('nav.myOrders')}
+            </Link>
+            <Link
+              to="/profile"
+              className={`text-sm font-bold uppercase tracking-wider transition-colors ${
+                isActive('/profile')
+                  ? 'text-raakky-red'
+                  : 'text-neutral-600 hover:text-neutral-950'
+              }`}
+            >
+              {isTamil ? 'கணக்கு' : 'Profile'}
             </Link>
             <Link
               to="/install"
@@ -118,10 +118,10 @@ export const Header: React.FC = () => {
             {!isProductPage && (
               <Link
                 to="/install"
-                className="flex sm:hidden items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-900 border border-amber-500/20 text-[11px] font-black uppercase tracking-tight active:scale-95 transition-transform"
+                className="flex sm:hidden items-center gap-1 px-2.5 py-1.5 rounded-xl bg-raakky-red/10 text-raakky-red border border-raakky-red/20 text-[11px] font-black uppercase tracking-tight active:scale-95 transition-transform"
                 title="Install Raakky Chicken App"
               >
-                <Download size={13} className="text-amber-700" />
+                <Download size={13} />
                 <span>{isTamil ? 'செயலி' : 'App'}</span>
               </Link>
             )}

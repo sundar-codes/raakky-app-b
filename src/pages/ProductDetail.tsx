@@ -295,14 +295,15 @@ export const ProductDetail: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-28 sm:pb-16 pt-1.5 sm:pt-4 md:py-6">
-      <div className="mx-auto max-w-6xl px-2.5 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-stone-50 pb-28 sm:pb-16 pt-0 sm:pt-4 md:py-6">
+      <div className="mx-auto max-w-6xl px-0 sm:px-6 lg:px-8">
         
         {/* Desktop Breadcrumb Navigation */}
         <div className="hidden sm:flex mb-4 items-center justify-between">
           <button
             onClick={() => navigate(-1)}
             className="group inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-stone-600 transition-colors hover:text-raakky-red"
+            aria-label="Back"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             <span>{t('common.back')}</span>
@@ -317,35 +318,38 @@ export const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* 2-COLUMN BALANCED DESKTOP & COMPACT MOBILE GRID */}
-        <div className="grid grid-cols-1 gap-4 lg:gap-8 lg:grid-cols-12 items-start">
+        {/* 2-COLUMN BALANCED DESKTOP & IMMERSIVE MOBILE GRID */}
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:gap-8 lg:grid-cols-12 items-start">
           
           {/* ============================================================== */}
           {/* LEFT COLUMN: HERO IMAGE + RICH BUTCHER COUNTER GUARANTEES     */}
-          {/* Fills desktop empty void with genuine trust & fresh signals   */}
+          {/* Large, high-clarity immersive image on mobile and desktop      */}
           {/* ============================================================== */}
           <div className="lg:col-span-5 space-y-3 sm:space-y-4">
             
-            {/* Product Image Card */}
-            <div className="relative h-44 xs:h-52 sm:h-72 lg:h-[340px] overflow-hidden rounded-2xl sm:rounded-3xl border border-stone-200/80 bg-white shadow-xs">
+            {/* Product Image Card: Generous height and uncropped crisp aspect ratio */}
+            <div className="relative h-72 xs:h-80 sm:h-96 lg:h-[400px] overflow-hidden rounded-b-3xl sm:rounded-3xl border-b sm:border border-stone-200/80 bg-neutral-900 shadow-sm">
               <img
                 src={product.imageUrl}
                 alt={name}
-                className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                className="h-full w-full object-cover object-center transition-transform duration-500 hover:scale-105"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/images/storefront.jpg';
                 }}
               />
 
+              {/* Gradient scrim at top for back button contrast on mobile */}
+              <div className="sm:hidden absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/50 via-black/20 to-transparent pointer-events-none z-10" />
+
               {/* Mobile Back Button (Floats cleanly over top-left of hero image) */}
-              <div className="sm:hidden absolute top-3 left-3 z-20">
+              <div className="sm:hidden absolute top-4 left-4 z-20">
                 <button
                   type="button"
                   onClick={() => navigate(-1)}
-                  className="w-9 h-9 rounded-full bg-white/95 backdrop-blur-md shadow-md flex items-center justify-center text-stone-800 hover:text-raakky-red active:scale-90 transition-all border border-stone-200/60"
+                  className="w-10 h-10 rounded-full bg-white/95 backdrop-blur-md shadow-lg flex items-center justify-center text-stone-900 hover:text-raakky-red active:scale-95 transition-all border border-stone-200/60"
                   aria-label="Back"
                 >
-                  <ArrowLeft size={18} />
+                  <ArrowLeft size={20} />
                 </button>
               </div>
 
@@ -382,7 +386,7 @@ export const ProductDetail: React.FC = () => {
           {/* RIGHT COLUMN: COMPACT SELECTORS & ABOVE-THE-FOLD ORDER ACTIONS */}
           {/* Screenshot 1 is immediately below hero image on mobile         */}
           {/* ============================================================== */}
-          <div className="lg:col-span-7 lg:sticky lg:top-20 space-y-3">
+          <div className="lg:col-span-7 lg:sticky lg:top-20 space-y-3 px-3 sm:px-0">
             <div className="rounded-2xl sm:rounded-3xl border border-stone-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-3">
               
               {/* Product Header & Live Price */}

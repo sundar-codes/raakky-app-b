@@ -385,7 +385,7 @@ export const Profile: React.FC = () => {
         </div>
 
         {/* Section 2.5: Install Mobile App / PWA */}
-        <div className="mb-6 rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/40 p-6 shadow-sm">
+        <div className="mb-6 rounded-3xl border-2 border-red-200/80 bg-gradient-to-br from-red-50/60 to-stone-50 p-6 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
               <img
@@ -398,7 +398,7 @@ export const Profile: React.FC = () => {
                   <h3 className="font-heading text-base font-bold text-neutral-900">
                     {isTamil ? 'ராக்கி சிக்கன் செயலியை நிறுவுங்கள்' : 'Install Raakky Chicken App'}
                   </h3>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-raakky-red bg-raakky-red/10 px-2 py-0.5 rounded-full">
                     {isTamil ? 'எளிது' : '1-Tap'}
                   </span>
                 </div>

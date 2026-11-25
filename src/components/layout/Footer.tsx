@@ -79,7 +79,7 @@ export const Footer: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/install" className="hover:text-white transition-colors flex items-center gap-1.5 text-amber-400 font-bold">
+                <Link to="/install" className="hover:text-white transition-colors flex items-center gap-1.5 text-raakky-red font-bold">
                   <span>{isTamil ? '📱 செயலியை நிறுவுங்கள்' : '📱 Install Mobile App'}</span>
                 </Link>
               </li>

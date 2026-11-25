@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Clock, Home, ShoppingBag, UtensilsCrossed, User } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Clock, Home, ShoppingBag, User } from 'lucide-react';
 import { useCart } from '../../contexts/CartContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { CartDrawer } from '../navigation/CartDrawer';
@@ -9,14 +10,8 @@ import { formatCurrency } from '../../utils/formatters';
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const { itemCount, subtotal } = useCart();
-  const { t } = useLanguage();
+  const { t, isTamil } = useLanguage();
   const [isCartOpen, setIsCartOpen] = useState(false);
-
-  const isActive = (path: string) => {
-    if (path === '/' && location.pathname === '/') return true;
-    if (path !== '/' && location.pathname.startsWith(path)) return true;
-    return false;
-  };
 
   // Hide general mobile nav on dedicated transactional and product detail views
   if (
@@ -27,21 +22,55 @@ export const MobileBottomNav: React.FC = () => {
     return null;
   }
 
+  // Exactly three modules as requested: Home, My Orders, Profile
+  const NAV_ITEMS = [
+    {
+      id: 'home',
+      path: '/',
+      labelEn: 'Home',
+      labelTa: 'முகப்பு',
+      icon: Home,
+      isActive: location.pathname === '/' || location.pathname === '/shop',
+    },
+    {
+      id: 'orders',
+      path: '/orders',
+      labelEn: 'My Orders',
+      labelTa: 'ஆர்டர்கள்',
+      icon: Clock,
+      isActive: location.pathname.startsWith('/orders') || location.pathname.startsWith('/order/'),
+    },
+    {
+      id: 'profile',
+      path: '/profile',
+      labelEn: 'Profile',
+      labelTa: 'கணக்கு',
+      icon: User,
+      isActive: location.pathname.startsWith('/profile'),
+    },
+  ];
+
   return (
     <>
+      {/* Floating Active Cart Bar (Shows above bottom nav when cart has items) */}
       {itemCount > 0 && !location.pathname.includes('/checkout') && !location.pathname.includes('/cart') && (
-        <div className="md:hidden fixed bottom-20 left-4 right-4 z-30">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="md:hidden fixed bottom-20 left-4 right-4 z-30"
+        >
           <button
             onClick={() => setIsCartOpen(true)}
-            className="w-full bg-neutral-900 text-white rounded-2xl p-3.5 shadow-2xl flex items-center justify-between border border-neutral-800 animate-in slide-in-from-bottom-4 active:scale-[0.99] transition-transform"
+            className="w-full bg-neutral-950 text-white rounded-2xl p-3 shadow-2xl flex items-center justify-between border border-neutral-800 active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-raakky-red flex items-center justify-center font-bold text-xs text-white">
+              <div className="w-8 h-8 rounded-xl bg-raakky-red flex items-center justify-center font-bold text-xs text-white shadow-spicy">
                 {itemCount}
               </div>
               <div className="text-left">
                 <p className="text-xs font-bold leading-tight">{t('cart.title')}</p>
-                <p className="text-[11px] text-neutral-400 font-mono">
+                <p className="text-[11px] text-neutral-300 font-mono">
                   {formatCurrency(subtotal)}
                 </p>
               </div>
@@ -51,67 +80,62 @@ export const MobileBottomNav: React.FC = () => {
               <ShoppingBag size={15} />
             </div>
           </button>
-        </div>
+        </motion.div>
       )}
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/80 px-2 py-1.5 flex items-center justify-around shadow-lg">
-        <Link
-          to="/"
-          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
-            isActive('/') && location.pathname === '/'
-              ? 'text-raakky-red font-bold'
-              : 'text-neutral-500 hover:text-neutral-900'
-          }`}
-        >
-          <Home size={20} strokeWidth={isActive('/') && location.pathname === '/' ? 2.5 : 2} />
-          <span className="text-[10px] mt-1 tracking-tight">{t('nav.home')}</span>
-        </Link>
+      {/* Floating Animated 3-Module Dock */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200/90 px-4 pt-1.5 shadow-lg select-none"
+        style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
+      >
+        <div className="max-w-md mx-auto flex items-center justify-around relative">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = item.isActive;
 
-        <Link
-          to="/shop"
-          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
-            isActive('/shop') ? 'text-raakky-red font-bold' : 'text-neutral-500 hover:text-neutral-900'
-          }`}
-        >
-          <UtensilsCrossed size={20} strokeWidth={isActive('/shop') ? 2.5 : 2} />
-          <span className="text-[10px] mt-1 tracking-tight">{t('nav.shop')}</span>
-        </Link>
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                className="relative flex-1 py-1.5 flex flex-col items-center justify-center focus:outline-none"
+              >
+                {/* Animated active background pill */}
+                {active && (
+                  <motion.div
+                    layoutId="activeBottomTabPill"
+                    className="absolute inset-x-2 inset-y-0.5 bg-raakky-red/10 border border-raakky-red/20 rounded-2xl"
+                    transition={{
+                      type: 'spring',
+                      stiffness: 450,
+                      damping: 35,
+                    }}
+                  />
+                )}
 
-        <button
-          onClick={() => setIsCartOpen(true)}
-          className="relative flex flex-col items-center py-1 px-3 rounded-xl text-neutral-500 hover:text-neutral-900 transition-colors"
-          aria-label="View Cart"
-        >
-          <div className="relative">
-            <ShoppingBag size={20} />
-            {itemCount > 0 && (
-              <span className="absolute -top-1 -right-2 bg-raakky-red text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                {itemCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] mt-1 tracking-tight">{t('nav.cart')}</span>
-        </button>
-
-        <Link
-          to="/orders"
-          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
-            isActive('/orders') ? 'text-raakky-red font-bold' : 'text-neutral-500 hover:text-neutral-900'
-          }`}
-        >
-          <Clock size={20} strokeWidth={isActive('/orders') ? 2.5 : 2} />
-          <span className="text-[10px] mt-1 tracking-tight">{t('nav.myOrders')}</span>
-        </Link>
-
-        <Link
-          to="/profile"
-          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
-            isActive('/profile') ? 'text-raakky-red font-bold' : 'text-neutral-500 hover:text-neutral-900'
-          }`}
-        >
-          <User size={20} strokeWidth={isActive('/profile') ? 2.5 : 2} />
-          <span className="text-[10px] mt-1 tracking-tight">{t('nav.profile')}</span>
-        </Link>
+                {/* Animated Icon & Text */}
+                <motion.div
+                  whileTap={{ scale: 0.88 }}
+                  className={`relative z-10 flex flex-col items-center transition-colors ${
+                    active ? 'text-raakky-red' : 'text-stone-500 hover:text-neutral-900'
+                  }`}
+                >
+                  <Icon
+                    size={21}
+                    strokeWidth={active ? 2.6 : 2}
+                    className={`transition-transform duration-200 ${active ? 'scale-110' : ''}`}
+                  />
+                  <span
+                    className={`text-[10px] mt-1 tracking-tight font-heading ${
+                      active ? 'font-black' : 'font-semibold'
+                    }`}
+                  >
+                    {isTamil ? item.labelTa : item.labelEn}
+                  </span>
+                </motion.div>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
