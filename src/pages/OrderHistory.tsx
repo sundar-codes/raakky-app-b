@@ -5,7 +5,8 @@ import {
   ArrowRight,
   RotateCw,
   Package,
-  Calendar
+  Calendar,
+  Lock
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,30 +20,47 @@ import { formatCurrency, formatOrderDate, formatWeight } from '../utils/formatte
 export const OrderHistory: React.FC = () => {
   const { t, isTamil, language } = useLanguage();
   const navigate = useNavigate();
-  const { customer } = useAuth();
+  const {
+    customer,
+    isAuthenticated,
+    isEmailVerified,
+    isPhoneVerified,
+    loading: authLoading,
+    openAuthModal,
+  } = useAuth();
   const { addToCart } = useCart();
   const { showSuccess, showError, showWarning } = useNotification();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'past'>('all');
 
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated || !isEmailVerified || !isPhoneVerified) {
+      setOrders([]);
+      setLoadError(null);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchOrders = async () => {
       setIsLoading(true);
+      setLoadError(null);
       try {
-        const phone = customer?.phone || '9843599030';
-        const list = await api.getCustomerOrders(phone);
+        const list = await api.getCustomerOrders();
         setOrders(list);
-      } catch (err) {
-        console.error('Error fetching orders:', err);
+      } catch (err: any) {
+        setLoadError(err?.message || 'Failed to load orders');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchOrders();
-  }, [customer?.phone]);
+  }, [authLoading, isAuthenticated, isEmailVerified, isPhoneVerified, customer?.id]);
 
   const handleReorder = async (order: Order, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -141,6 +159,34 @@ export const OrderHistory: React.FC = () => {
             {Array.from({ length: 3 }).map((_, idx) => (
               <div key={idx} className="h-32 animate-pulse rounded-3xl bg-stone-200" />
             ))}
+          </div>
+        ) : !isAuthenticated || !isEmailVerified || !isPhoneVerified ? (
+          <div className="my-12 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-raakky-cream text-raakky-red">
+              <Lock className="h-8 w-8" />
+            </div>
+            <h3 className="font-heading text-xl font-bold text-neutral-900">
+              {isTamil ? 'ஆர்டர்களைக் காண உள்நுழையவும்' : 'Sign in to view your orders'}
+            </h3>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-stone-600">
+              {isTamil
+                ? 'உங்கள் ஆர்டர்கள் உங்கள் சரிபார்க்கப்பட்ட Google கணக்கு மற்றும் மொபைல் எண்ணுடன் பாதுகாப்பாக இணைக்கப்பட்டுள்ளன.'
+                : 'Your orders are linked securely to your verified Google account and mobile number.'}
+            </p>
+            <button
+              onClick={() => openAuthModal()}
+              className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-raakky-red px-6 py-3 font-heading text-xs font-black uppercase tracking-wider text-white shadow-md hover:bg-raakky-red-dark"
+            >
+              <Lock className="h-4 w-4" />
+              <span>{isTamil ? 'சரிபார்க்கப்பட்ட கணக்கில் உள்நுழைக' : 'Sign in & Verify Phone'}</span>
+            </button>
+          </div>
+        ) : loadError ? (
+          <div className="my-12 rounded-3xl border border-red-200 bg-white p-10 text-center">
+            <h3 className="font-heading text-lg font-bold text-neutral-900">
+              {isTamil ? 'ஆர்டர்களைப் பெற முடியவில்லை' : 'Unable to Load Orders'}
+            </h3>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-red-600">{loadError}</p>
           </div>
         ) : filteredOrders.length > 0 ? (
           <div className="space-y-4">

@@ -11,8 +11,64 @@ import {
   ShopSettings,
 } from '../types';
 import { safeStorage, StorageKeys } from './storage';
+import { auth } from './firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+async function getFirebaseBearerHeaders(forceRefresh = false): Promise<Record<string, string>> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Please sign in with Google and verify your mobile number to continue.');
+  }
+  const token = await currentUser.getIdToken(forceRefresh);
+  if (!token) {
+    throw new Error('Authentication session expired. Please sign in again.');
+  }
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+function normalizeUiPhone(phone: string | undefined | null): string {
+  if (!phone) return '';
+  return phone.replace(/^\+91/, '').replace(/\D/g, '').slice(-10);
+}
+
+function normalizeCustomerDto(raw: any): Customer {
+  return {
+    id: String(raw.id || raw.firebaseUid || ''),
+    name: String(raw.name || 'Customer'),
+    email: raw.email ? String(raw.email) : undefined,
+    phone: normalizeUiPhone(raw.phone),
+    isPhoneVerified: Boolean(raw.phoneVerified ?? raw.isPhoneVerified),
+    addresses: Array.isArray(raw.addresses)
+      ? raw.addresses.map((addr: any) => ({
+          ...addr,
+          recipientPhone: normalizeUiPhone(addr.recipientPhone) || normalizeUiPhone(raw.phone),
+        }))
+      : [],
+    defaultAddressId: raw.defaultAddressId ? String(raw.defaultAddressId) : undefined,
+    createdAt: String(raw.createdAt || new Date().toISOString()),
+  };
+}
+
+async function parseErrorMessage(res: Response, fallbackMessage: string): Promise<string> {
+  try {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data?.error && typeof data.error === 'string') {
+        return data.error;
+      }
+      if (data?.message && typeof data.message === 'string') {
+        return data.message;
+      }
+    }
+  } catch {
+    // Ignore JSON parse failures
+  }
+  return fallbackMessage;
+}
 
 // Configured 4 delivery service localities in Coimbatore
 export const SUPPORTED_LOCALITIES: DeliveryLocality[] = [
@@ -873,203 +929,138 @@ export const api = {
     return INITIAL_PRODUCTS.find(p => p.id === id || p.slug === id) || null;
   },
 
-  async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
+  async getCustomerProfile(forceRefresh = false): Promise<Customer> {
+    const authHeaders = await getFirebaseBearerHeaders(forceRefresh);
+    const res = await fetch(`${API_BASE_URL}/customer/profile`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to load verified customer profile'));
     }
-    await new Promise(r => setTimeout(r, 600));
-    return { success: true, message: 'OTP sent to mobile (Development Test Code: 123456)' };
-  },
-
-  async verifyOtp(phone: string, otp: string): Promise<{ success: boolean; customer: Customer; token: string }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp }),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
-    }
-
-    await new Promise(r => setTimeout(r, 600));
-    if (otp !== '123456' && otp.length !== 6) {
-      throw new Error('Invalid verification code');
-    }
-
-    const existingCustomer = safeStorage.get<Customer | null>(StorageKeys.CUSTOMER, null);
-    const customer: Customer = {
-      id: existingCustomer?.id || `cust-${Date.now()}`,
-      phone,
-      name: existingCustomer?.name || 'Customer',
-      email: existingCustomer?.email,
-      isPhoneVerified: true,
-      addresses: existingCustomer?.addresses || [
-        {
-          id: 'addr-default',
-          label: 'Home',
-          recipientName: existingCustomer?.name || 'Customer',
-          recipientPhone: phone,
-          localityId: 'press-colony',
-          localityName: 'Press Colony',
-          flatNumber: 'Door 12',
-          streetAddress: 'Thiruvalluvar Nagar 2nd Street',
-          landmark: 'Near Government High School',
-          pincode: '641019',
-          deliveryNotes: 'Leave with family',
-          isDefault: true,
-        },
-      ],
-      defaultAddressId: existingCustomer?.defaultAddressId || 'addr-default',
-      createdAt: existingCustomer?.createdAt || new Date().toISOString(),
-    };
-
+    const data = await res.json();
+    const customer = normalizeCustomerDto(data.customer || data);
     safeStorage.set(StorageKeys.CUSTOMER, customer);
-    const token = `jwt_mock_${Date.now()}`;
-    safeStorage.setString(StorageKeys.TOKEN, token);
-
-    return { success: true, customer, token };
+    return customer;
   },
 
-  async updateCustomerProfile(updates: Partial<Customer>): Promise<Customer> {
-    const existing = safeStorage.get<Customer | null>(StorageKeys.CUSTOMER, null);
-    if (!existing) {
-      throw new Error('Not authenticated');
+  async updateCustomerProfile(
+    updates: Partial<Customer>,
+    forceRefresh = false
+  ): Promise<Customer> {
+    const authHeaders = await getFirebaseBearerHeaders(forceRefresh);
+    const payload: Record<string, unknown> = {};
+
+    if (typeof updates.name === 'string') {
+      payload.name = updates.name.trim();
     }
-    const updated: Customer = {
-      ...existing,
-      ...updates,
-    };
-    safeStorage.set(StorageKeys.CUSTOMER, updated);
-    return updated;
+    if (Array.isArray(updates.addresses)) {
+      payload.addresses = updates.addresses;
+    }
+    if (typeof updates.defaultAddressId === 'string') {
+      payload.defaultAddressId = updates.defaultAddressId;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/customer/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to update customer profile'));
+    }
+
+    const data = await res.json();
+    const customer = normalizeCustomerDto(data.customer || data);
+    safeStorage.set(StorageKeys.CUSTOMER, customer);
+    return customer;
   },
 
-  async createOrder(payload: {
-    customerId: string;
-    customerName: string;
-    customerPhone: string;
-    orderType: 'DELIVERY' | 'PICKUP';
-    deliveryAddress?: CustomerAddress;
-    paymentMethod: PaymentMethod;
-    paymentStatus?: 'PENDING' | 'PAID';
-    upiTransactionId?: string;
-    upiApp?: string;
-    items: {
-      productId: string;
-      variantId: string;
-      quantity: number;
-      cutType: any;
-      skinType?: any;
-      specialInstructions?: string;
-    }[];
-  }): Promise<Order> {
-    // Validate delivery locality if orderType is DELIVERY
+  async createOrder(
+    payload: {
+      customerId?: string;
+      customerName?: string;
+      customerPhone?: string;
+      orderType: 'DELIVERY' | 'PICKUP';
+      deliveryAddress?: CustomerAddress;
+      paymentMethod: PaymentMethod;
+      paymentStatus?: 'PENDING';
+      items: {
+        productId: string;
+        variantId: string;
+        quantity: number;
+        cutType: any;
+        skinType?: any;
+        specialInstructions?: string;
+      }[];
+      idempotencyKey?: string;
+    },
+    options?: { idempotencyKey?: string }
+  ): Promise<Order> {
+    // Validate delivery locality before sending request
     if (payload.orderType === 'DELIVERY') {
       if (!payload.deliveryAddress?.localityId) {
-        throw new Error('Please select one of our supported delivery localities (Press Colony, Veerapandi Pirivu, Periyanaickenpalayam, Mathampalayam).');
+        throw new Error(
+          'Please select one of our supported delivery localities (Press Colony, Veerapandi Pirivu, Periyanaickenpalayam, Mathampalayam).'
+        );
       }
-      const supported = SUPPORTED_LOCALITIES.find(l => l.id === payload.deliveryAddress?.localityId && l.isAvailable);
+      const supported = SUPPORTED_LOCALITIES.find(
+        l => l.id === payload.deliveryAddress?.localityId && l.isAvailable
+      );
       if (!supported) {
-        throw new Error('Delivery is currently available only in Press Colony, Veerapandi Pirivu, Periyanaickenpalayam, and Mathampalayam. Please choose Store Pickup.');
+        throw new Error(
+          'Delivery is currently available only in Press Colony, Veerapandi Pirivu, Periyanaickenpalayam, and Mathampalayam. Please choose Store Pickup.'
+        );
       }
     }
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
-    }
+    const authHeaders = await getFirebaseBearerHeaders(true);
+    const idempotencyKey =
+      options?.idempotencyKey ||
+      payload.idempotencyKey ||
+      (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `ordk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
 
-    let itemTotal = 0;
-    const orderItemsRecord = payload.items.map((item, idx) => {
-      const product = INITIAL_PRODUCTS.find(p => p.id === item.productId);
-      if (!product) throw new Error(`Product not found: ${item.productId}`);
-      const variant = product.variants.find(v => v.id === item.variantId);
-      if (!variant) throw new Error(`Variant not found: ${item.variantId}`);
-      if (!variant.isAvailable) throw new Error(`Product ${product.nameEn} (${variant.weightLabelEn}) is out of stock`);
-
-      const subtotal = variant.price * item.quantity;
-      itemTotal += subtotal;
-
-      return {
-        id: `order-item-${idx + 1}-${Date.now()}`,
-        productId: product.id,
-        variantId: variant.id,
-        productNameEn: product.nameEn,
-        productNameTa: product.nameTa,
-        imageUrl: product.imageUrl,
-        weightGrams: variant.weightGrams,
-        weightLabelEn: variant.weightLabelEn,
-        weightLabelTa: variant.weightLabelTa,
-        unitPrice: variant.price,
+    const requestBody = {
+      orderType: payload.orderType,
+      deliveryAddress: payload.orderType === 'DELIVERY' ? payload.deliveryAddress : undefined,
+      paymentMethod: payload.paymentMethod,
+      items: payload.items.map(item => ({
+        productId: item.productId,
+        variantId: item.variantId,
         quantity: item.quantity,
-        subtotal,
         cutType: item.cutType,
         skinType: item.skinType,
         specialInstructions: item.specialInstructions,
-      };
-    });
-
-    const isDelivery = payload.orderType === 'DELIVERY';
-    const deliveryFee = isDelivery ? DEFAULT_SHOP_SETTINGS.deliveryFee : 0;
-    const packagingFee = 0;
-    const finalTotal = itemTotal + deliveryFee + packagingFee;
-
-    const orderNumber = `RK-${Math.floor(100000 + Math.random() * 900000)}`;
-    const nowIso = new Date().toISOString();
-
-    const order: Order = {
-      id: `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      orderNumber,
-      customerId: payload.customerId,
-      customerName: payload.customerName,
-      customerPhone: payload.customerPhone,
-      orderType: payload.orderType,
-      status: 'PENDING',
-      deliveryAddress: isDelivery ? payload.deliveryAddress : undefined,
-      items: orderItemsRecord,
-      itemTotal,
-      deliveryFee,
-      packagingFee,
-      discount: 0,
-      finalTotal,
-      paymentMethod: payload.paymentMethod,
-      // Never mark an order as paid merely because submitted. Payment remains unpaid until shop confirms.
-      paymentStatus: 'PENDING',
-      upiTransactionId: payload.upiTransactionId,
-      upiApp: payload.upiApp,
-      estimatedTime: isDelivery ? '30–40 mins' : '15–20 mins',
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      statusTimeline: [
-        {
-          status: 'PENDING',
-          timestamp: nowIso,
-          note: 'Order submitted to shop counter for verification',
-        },
-      ],
+      })),
     };
 
-    const existingOrders = getStoredOrders();
+    const res = await fetch(`${API_BASE_URL}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': idempotencyKey,
+        ...authHeaders,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Unable to place order. Please try again.'));
+    }
+
+    const data = await res.json();
+    const order: Order = data.order || data;
+
+    // Cache server-confirmed order locally only after backend persistence succeeds
+    const existingOrders = getStoredOrders().filter(o => o.id !== order.id);
     saveStoredOrders([order, ...existingOrders]);
     safeStorage.setString(StorageKeys.ACTIVE_ORDER_ID, order.id);
 
@@ -1077,70 +1068,76 @@ export const api = {
   },
 
   async getOrderById(orderId: string): Promise<Order | null> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/orders/${orderId}`);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
+    if (!auth.currentUser) {
+      throw new Error('Please sign in to view order details.');
     }
 
-    const orders = getStoredOrders();
-    const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
-    if (!order) return null;
-
-    return order;
-  },
-
-  async getCustomerOrders(customerIdOrPhone: string): Promise<Order[]> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/customers/${customerIdOrPhone}/orders`);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
-    }
-    const orders = getStoredOrders();
-    return orders.filter(
-      o => o.customerId === customerIdOrPhone || o.customerPhone === customerIdOrPhone
-    );
-  },
-
-  async cancelOrder(orderId: string, reason: string = 'Customer requested cancellation'): Promise<{ success: boolean; order: Order }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
-    }
-
-    const orders = getStoredOrders();
-    const order = orders.find(o => o.id === orderId);
-    if (!order) throw new Error('Order not found');
-
-    if (order.status === 'PREPARING' || order.status === 'OUT_FOR_DELIVERY' || order.status === 'COMPLETED') {
-      throw new Error('Order is already being prepared or out for delivery and cannot be cancelled directly.');
-    }
-
-    order.status = 'CANCELLED';
-    order.cancellationReason = reason;
-    order.updatedAt = new Date().toISOString();
-    order.statusTimeline.push({
-      status: 'CANCELLED',
-      timestamp: order.updatedAt,
-      note: reason,
+    const authHeaders = await getFirebaseBearerHeaders(false);
+    const res = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(orderId)}`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders,
+      },
     });
 
-    saveStoredOrders(orders.map(o => (o.id === order.id ? order : o)));
-    return { success: true, order };
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Unable to load order details'));
+    }
+
+    const data = await res.json();
+    return (data.order || data) as Order;
+  },
+
+  async getCustomerOrders(_customerIdOrPhone?: string): Promise<Order[]> {
+    if (!auth.currentUser) {
+      return [];
+    }
+
+    const authHeaders = await getFirebaseBearerHeaders(false);
+    const res = await fetch(`${API_BASE_URL}/customer/orders`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to load your order history'));
+    }
+
+    const data = await res.json();
+    const orders: Order[] = Array.isArray(data) ? data : Array.isArray(data.orders) ? data.orders : [];
+    saveStoredOrders(orders);
+    return orders;
+  },
+
+  async cancelOrder(
+    orderId: string,
+    reason: string = 'Customer requested cancellation'
+  ): Promise<{ success: boolean; order: Order }> {
+    const authHeaders = await getFirebaseBearerHeaders(true);
+    const res = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(orderId)}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({ reason }),
+    });
+
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Unable to cancel this order'));
+    }
+
+    const data = await res.json();
+    const updatedOrder: Order = data.order;
+    const existingOrders = getStoredOrders();
+    saveStoredOrders(existingOrders.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
+
+    return { success: true, order: updatedOrder };
   },
 
   /**

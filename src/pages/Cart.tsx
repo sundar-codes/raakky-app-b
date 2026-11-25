@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useShop } from '../contexts/ShopContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { CartItemRow } from '../components/cart/CartItemRow';
@@ -35,6 +36,7 @@ export const Cart: React.FC = () => {
     revalidateCart,
   } = useCart();
   const { isPaused, pauseReason } = useShop();
+  const { isAuthenticated, initiateCheckoutAuth } = useAuth();
   const { showSuccess, showInfo, showWarning } = useNotification();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -42,6 +44,13 @@ export const Cart: React.FC = () => {
   const [isRevalidating, setIsRevalidating] = useState(false);
 
   const handleProceedToCheckout = async () => {
+    // Synchronous Google Auth popup launch if unauthenticated (must run before any await)
+    if (!isAuthenticated) {
+      initiateCheckoutAuth(navigate);
+      revalidateCart().catch(() => {});
+      return;
+    }
+
     setIsRevalidating(true);
     try {
       const result = await revalidateCart();
@@ -56,7 +65,7 @@ export const Cart: React.FC = () => {
     } finally {
       setIsRevalidating(false);
     }
-    navigate('/checkout');
+    initiateCheckoutAuth(navigate);
   };
 
   const handleManualRevalidate = async () => {
