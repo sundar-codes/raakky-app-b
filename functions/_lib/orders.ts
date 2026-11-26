@@ -27,6 +27,7 @@ const VALID_CUT_REGEX = /^[a-z0-9_]{2,40}$/;
 const IDEMPOTENCY_KEY_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
 async function computeRequestHash(payload: {
+  customerPhone: string;
   orderType: string;
   paymentMethod: string;
   deliveryAddress?: CustomerAddressRecord;
@@ -40,6 +41,7 @@ async function computeRequestHash(payload: {
   }>;
 }): Promise<string> {
   const canonical = JSON.stringify({
+    customerPhone: payload.customerPhone,
     orderType: payload.orderType,
     paymentMethod: payload.paymentMethod,
     deliveryAddress: payload.deliveryAddress
@@ -191,6 +193,17 @@ export async function createCustomerOrder(
     throw new OrderApiError('Invalid order payload', 400, 'INVALID_PAYLOAD');
   }
 
+  // A contact number is required for shop fulfilment, but SMS verification is not.
+  // The route has already normalised self-reported numbers to Indian E.164.
+  const contactPhone = (verified.phone || verified.selfReportedPhone || '').trim();
+  if (!/^\+91[6-9]\d{9}$/.test(contactPhone)) {
+    throw new OrderApiError(
+      'A valid Indian mobile number is required to place an order. SMS verification is not required.',
+      400,
+      'INVALID_CUSTOMER_PHONE'
+    );
+  }
+
   // 1. Validate idempotency key (header takes precedence over body)
   const rawKey =
     (typeof headerIdempotencyKey === 'string' && headerIdempotencyKey.trim()) ||
@@ -303,6 +316,7 @@ export async function createCustomerOrder(
 
   // 6. Compute canonical payload digest and inspect idempotency table FIRST
   const requestHash = await computeRequestHash({
+    customerPhone: contactPhone,
     orderType,
     paymentMethod,
     deliveryAddress: validatedAddress,
@@ -581,8 +595,16 @@ export async function createCustomerOrder(
     }
 
     // 11. Upsert verified customer profile from verified JWT claims ONLY
-    const customerProfile = await upsertVerifiedCustomer(db, verified);
+    // If customer has a self-reported phone, merge it into the verified customer for profile storage
+    const customerVerifiedWithPhone: VerifiedFirebaseCustomer = {
+      ...verified,
+      phone: verified.phone || verified.selfReportedPhone || '',
+      selfReportedPhone: verified.selfReportedPhone || '',
+    };
+    const customerProfile = await upsertVerifiedCustomer(db, customerVerifiedWithPhone);
     const customerNameToStore = customerProfile.name || verified.name;
+    const customerPhoneToStore = customerProfile.phone || verified.phone || verified.selfReportedPhone || '';
+    const isPhoneVerified = verified.jwtPhoneVerified;
 
     // 12. Allocate sequential order number and persist atomically
     const orderId = `ord_${crypto.randomUUID()}`;
@@ -601,13 +623,12 @@ export async function createCustomerOrder(
           `INSERT INTO orders (
             id, order_number, customer_id, firebase_uid,
             customer_name, customer_phone, customer_email,
-            email_verified, phone_verified,
-            order_type, status, delivery_address_json,
+            email_verified, phone_verified,            order_type, status, delivery_address_json,
             item_total, delivery_fee, packaging_fee, discount, final_total,
             payment_method, payment_status,
             estimated_time, notes, idempotency_key, source,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, 'APP_B', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, 'APP_B', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
         )
         .bind(
           orderId,
@@ -615,8 +636,9 @@ export async function createCustomerOrder(
           customerProfile.id,
           verified.uid,
           customerNameToStore,
-          verified.phone,
+          customerPhoneToStore,
           verified.email,
+          isPhoneVerified ? 1 : 0,
           orderType,
           validatedAddress ? JSON.stringify(validatedAddress) : null,
           serverItemTotal,

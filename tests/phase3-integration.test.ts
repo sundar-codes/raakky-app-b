@@ -114,7 +114,7 @@ async function invokeAppA(
 // =========================================================================
 // SUITE 1: FIREBASE JWT CRYPTOGRAPHIC AUTHENTICATION & KEY ROTATION
 // =========================================================================
-test('Suite 1: Firebase ID token verification enforces cryptographic RS256, claims, email_verified, E.164 phone, and key rotation', async () => {
+test('Suite 1: Firebase ID token verification enforces RS256, verified email, optional phone claims, and key rotation', async () => {
   const db = createSqliteD1Database(MIGRATIONS_DIR);
   const key1 = createFirebaseSigningKeyPair('kid-rotation-1');
   const key2 = createFirebaseSigningKeyPair('kid-rotation-2');
@@ -176,21 +176,34 @@ test('Suite 1: Firebase ID token verification enforces cryptographic RS256, clai
     assert.equal(rUnverifiedEmail.status, 403);
     assert.equal(rUnverifiedEmail.json.code, 'EMAIL_NOT_VERIFIED');
 
-    // 9. Missing phone_number -> 403 PHONE_NOT_VERIFIED
+    // 9. Missing phone_number is allowed at profile creation; checkout collects a self-reported number.
+    // The absence of a Firebase phone claim must never mark a number as verified.
     const noPhoneToken = await signTestFirebaseJwt(key1, {
       phone_number: '',
     });
     const rNoPhone = await invokeAppB(db, '/customer/profile', { token: noPhoneToken });
-    assert.equal(rNoPhone.status, 403);
-    assert.equal(rNoPhone.json.code, 'PHONE_NOT_VERIFIED');
+    assert.equal(rNoPhone.status, 200);
+    assert.equal(rNoPhone.json.phone, '');
+    assert.equal(rNoPhone.json.phoneVerified, false);
 
-    // 10. Non-E.164 phone_number -> 403 PHONE_NOT_VERIFIED
+    // A second Google-only customer can also create a profile before entering a phone.
+    const noPhoneToken2 = await signTestFirebaseJwt(key1, {
+      sub: 'uid_auth_no_phone_2',
+      email: 'second@example.com',
+      phone_number: '',
+    });
+    const rNoPhone2 = await invokeAppB(db, '/customer/profile', { token: noPhoneToken2 });
+    assert.equal(rNoPhone2.status, 200);
+    assert.equal(rNoPhone2.json.phone, '');
+    assert.equal(rNoPhone2.json.phoneVerified, false);
+
+    // 10. Non-E.164 phone_number -> 403 INVALID_TOKEN_PHONE
     const badPhoneToken = await signTestFirebaseJwt(key1, {
       phone_number: '9876543210',
     });
     const rBadPhone = await invokeAppB(db, '/customer/profile', { token: badPhoneToken });
     assert.equal(rBadPhone.status, 403);
-    assert.equal(rBadPhone.json.code, 'PHONE_NOT_VERIFIED');
+    assert.equal(rBadPhone.json.code, 'INVALID_TOKEN_PHONE');
 
     // 11. Valid token authenticates & caches public certificates
     const validToken1 = await signTestFirebaseJwt(key1, {
@@ -621,7 +634,8 @@ test('Suite 4: End-to-End order flow from App B to App A Shop Operations (shared
     const customerToken = await signTestFirebaseJwt(key1, {
       sub: 'uid_e2e_customer',
       email: 'lakshmi@gmail.com',
-      phone_number: '+919899887766',
+      // Explicitly override the helper's default phone claim for this unverified-phone scenario.
+      phone_number: '',
       name: 'Lakshmi Narayanan',
     });
 
@@ -637,6 +651,7 @@ test('Suite 4: End-to-End order flow from App B to App A Shop Operations (shared
       token: customerToken,
       headers: { 'X-Idempotency-Key': 'idem_e2e_order_0001' },
       body: {
+        customerPhone: '+919899887766',
         orderType: 'DELIVERY',
         paymentMethod: 'CASH_ON_DELIVERY',
         deliveryAddress: {
@@ -690,7 +705,7 @@ test('Suite 4: End-to-End order flow from App B to App A Shop Operations (shared
     assert.equal(loginRes.json.token.split('.').length, 3);
     const adminToken = loginRes.json.token;
 
-    // 4. App A incoming orders list includes App B's order with verified customer email + mobile + verification badges
+    // 4. App A incoming orders list includes verified Google email and a collected but unverified mobile number
     const adminOrdersRes = await invokeAppA(db, '/admin/orders', { token: adminToken });
     assert.equal(adminOrdersRes.status, 200);
     const syncedOrder = adminOrdersRes.json.find((o: any) => o.id === orderId);
@@ -699,7 +714,7 @@ test('Suite 4: End-to-End order flow from App B to App A Shop Operations (shared
     assert.equal(syncedOrder.customerEmail, 'lakshmi@gmail.com');
     assert.equal(syncedOrder.customerPhone, '+919899887766');
     assert.equal(syncedOrder.emailVerified, true);
-    assert.equal(syncedOrder.phoneVerified, true);
+    assert.equal(syncedOrder.phoneVerified, false);
     assert.equal(syncedOrder.paymentStatus, 'PENDING');
 
     // 5. Shop Owner accepts order -> atomic stock reservation + RK-2026-XXXXXX invoice generated
@@ -767,6 +782,7 @@ test('Suite 4: End-to-End order flow from App B to App A Shop Operations (shared
       token: customerToken,
       headers: { 'X-Idempotency-Key': 'idem_e2e_reject_order_01' },
       body: {
+        customerPhone: '+919899887766',
         orderType: 'PICKUP',
         paymentMethod: 'PAY_AT_STORE',
         items: [{ productId: 'prod-liver', variantId: 'var-liver-500g', quantity: 2 }],

@@ -4,14 +4,9 @@ import {
   ArrowLeft,
   ShoppingBag,
   ShieldCheck,
-  CheckCircle2,
   Lock,
-  Phone,
-  Clock,
-  Sparkles,
   AlertCircle,
   Info,
-  RefreshCw,
   Truck,
   Store,
   Scissors
@@ -30,7 +25,6 @@ import { ChilliSpinner } from '../components/loaders/ChilliSpinner';
 import { api, SUPPORTED_LOCALITIES } from '../services/api';
 import { formatCurrency, formatWeight } from '../utils/formatters';
 import { OrderType, PaymentMethod, CustomerAddress } from '../types';
-import { ConfirmationResult } from 'firebase/auth';
 import { formatIndianPhoneNumber } from '../services/firebaseAuth';
 
 export const Checkout: React.FC = () => {
@@ -43,6 +37,8 @@ export const Checkout: React.FC = () => {
     isAuthenticated,
     isEmailVerified,
     isPhoneVerified,
+    hasValidPhone,
+    setCustomerPhone,
     loading: authLoading,
     isGooglePopupPending,
     authError: contextAuthError,
@@ -50,29 +46,22 @@ export const Checkout: React.FC = () => {
     clearAuthMessages,
     signInWithGoogle,
     signInWithGoogleRedirect,
-    sendPhoneOtp,
-    verifyAndLinkOtp,
-    openAuthModal,
     logout,
   } = useAuth();
   const { settings, isPaused, pauseReason } = useShop();
   const { showSuccess, showError, showWarning } = useNotification();
 
-  // Current Step (1: Auth, 2: Fulfilment, 3: Payment, 4: Review)
-  const [currentStep, setCurrentStep] = useState<number>(isPhoneVerified ? 2 : 1);
+  // A customer can proceed past step 1 if:
+  // 1. They have Firebase phone OTP verification (isPhoneVerified), OR
+  // 2. They have Google email verified + a valid self-reported phone number (hasValidPhone)
+  const canProceedPastAuth = isPhoneVerified || (isEmailVerified && hasValidPhone);
+
+  // Current Step (1: Auth + Phone, 2: Fulfilment, 3: Payment, 4: Review)
+  const [currentStep, setCurrentStep] = useState<number>(canProceedPastAuth ? 2 : 1);
 
   // Auth Inputs
   const [phoneInput, setPhoneInput] = useState(customer?.phone || '');
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [otpSent, setOtpSent] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [billingError, setBillingError] = useState<string | null>(null);
-  const [otpExpired, setOtpExpired] = useState(false);
-  const [countdown, setCountdown] = useState(30);
-  const [canResend, setCanResend] = useState(false);
 
   // Fulfilment state
   const [orderType, setOrderType] = useState<OrderType>('DELIVERY');
@@ -82,10 +71,10 @@ export const Checkout: React.FC = () => {
 
   // Sync step automatically if customer session restores or gets verified
   useEffect(() => {
-    if (isPhoneVerified && currentStep === 1) {
+    if (canProceedPastAuth && currentStep === 1) {
       setCurrentStep(2);
     }
-  }, [isPhoneVerified, currentStep]);
+  }, [canProceedPastAuth, currentStep]);
 
   // Sync default address when customer loads
   useEffect(() => {
@@ -94,22 +83,12 @@ export const Checkout: React.FC = () => {
     }
   }, [customer, selectedAddress]);
 
-  // Countdown timer for OTP
+  // Sync phoneInput from customer when it changes
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (otpSent && countdown > 0) {
-      timer = setInterval(() => {
-        setCountdown((c) => {
-          if (c <= 1) {
-            setCanResend(true);
-            return 0;
-          }
-          return c - 1;
-        });
-      }, 1000);
+    if (customer?.phone && !phoneInput) {
+      setPhoneInput(customer.phone);
     }
-    return () => clearInterval(timer);
-  }, [otpSent, countdown]);
+  }, [customer?.phone]);
 
   // Payment state - Strictly synced with fulfilment mode:
   // Delivery -> Cash on Delivery
@@ -143,7 +122,7 @@ export const Checkout: React.FC = () => {
 
   useEffect(() => {
     setIdempotencyKey(generateIdempotencyKey());
-  }, [cartSignature, orderType, selectedAddress?.id, paymentMethod]);
+  }, [cartSignature, orderType, selectedAddress?.id, paymentMethod, customer?.phone]);
 
   // Redirect if cart empty
   if (items.length === 0) {
@@ -169,18 +148,16 @@ export const Checkout: React.FC = () => {
   // 1. Google Sign-In Handler (synchronously launches popup from direct click gesture)
   const handleGoogleSignIn = () => {
     setAuthError(null);
-    setBillingError(null);
     clearAuthMessages();
 
     signInWithGoogle({ redirectPath: '/checkout' })
       .then((res) => {
-        if (res.dismissed || res.blocked || res.redirecting) {
-          return;
-        }
+        if (res.dismissed || res.blocked || res.redirecting) return;
         if (!res.success) {
           if (res.error) setAuthError(res.error);
           return;
         }
+
         if (res.hasLinkedPhone) {
           showSuccess(
             'Signed In',
@@ -196,117 +173,52 @@ export const Checkout: React.FC = () => {
       });
   };
 
-  // 2. Send SMS OTP Handler
-  const handleSendOtp = async (e?: React.FormEvent) => {
+  // 2. Save a self-reported Indian contact number. This does not verify the phone.
+  const handleSavePhone = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setAuthError(null);
-    setBillingError(null);
-    setOtpExpired(false);
     clearAuthMessages();
+
+    if (!firebaseUser || !isEmailVerified) {
+      setAuthError(
+        isTamil
+          ? 'முதலில் சரிபார்க்கப்பட்ட Google கணக்கில் உள்நுழையவும்.'
+          : 'Please sign in with a verified Google account first.'
+      );
+      return;
+    }
 
     const validation = formatIndianPhoneNumber(phoneInput);
     if (!validation.isValid) {
       setAuthError(
         isTamil
           ? 'சரியான 10 இலக்க இந்திய மொபைல் எண்ணை உள்ளிடவும்'
-          : validation.error || 'Please enter a valid 10-digit mobile number'
+          : validation.error || 'Please enter a valid 10-digit Indian mobile number.'
       );
       return;
     }
 
-    setIsSendingOtp(true);
-    try {
-      const res = await sendPhoneOtp(validation.e164, 'recaptcha-checkout-step1');
-      if (res.success && res.confirmationResult) {
-        setConfirmationResult(res.confirmationResult);
-        setOtpSent(true);
-        setCountdown(30);
-        setCanResend(false);
-        setOtpDigits(['', '', '', '', '', '']);
-      } else if (res.isBillingError) {
-        // Keep phone form intact; never pretend OTP was sent or bypass security
-        setOtpSent(false);
-        setBillingError(res.error || 'Real SMS verification unavailable: Firebase Cloud Billing is not enabled.');
-      } else {
-        setAuthError(res.error || (isTamil ? 'OTP அனுப்ப முடியவில்லை' : 'Failed to send OTP'));
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Failed to send OTP');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  // 3. Verify OTP & Link Phone Handler
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setAuthError(null);
-
-    const code = otpDigits.join('');
-    if (code.length !== 6) {
-      setAuthError(isTamil ? '6 இலக்க OTP குறியீட்டை உள்ளிடவும்' : 'Please enter the 6-digit OTP code');
-      return;
-    }
-    if (!confirmationResult) {
-      setAuthError(isTamil ? 'OTP அமர்வு காலாவதியானது' : 'OTP session expired. Please resend code');
-      setOtpExpired(true);
+    if (!customer) {
+      setAuthError(
+        isTamil ? 'உங்கள் வாடிக்கையாளர் விவரங்கள் இன்னும் ஏற்றப்படுகின்றன. மீண்டும் முயற்சிக்கவும்.' :
+          'Your customer profile is still loading. Please try again.'
+      );
       return;
     }
 
-    setIsVerifyingOtp(true);
-    try {
-      const res = await verifyAndLinkOtp(confirmationResult, code);
-      if (res.success) {
-        showSuccess(
-          'Phone Verified',
-          'எண் சரிபார்க்கப்பட்டது',
-          'Phone linked to your account successfully',
-          'உங்கள் மொபைல் எண் வெற்றிகரமாக இணைக்கப்பட்டது'
-        );
-        setCurrentStep(2);
-      } else {
-        if (res.errorCode === 'auth/code-expired') {
-          setOtpExpired(true);
-          setCountdown(0);
-          setCanResend(true);
-        }
-        setAuthError(res.error || (isTamil ? 'சரிபார்ப்பு தோல்வியடைந்தது' : 'Verification failed'));
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Verification error');
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
+    // Store only the 10-digit national number in the customer profile.
+    // The backend receives the E.164 value with the order and keeps it UNVERIFIED.
+    const nationalPhone = validation.e164.replace(/^\+91/, '');
+    setCustomerPhone(nationalPhone);
+    setPhoneInput(nationalPhone);
+    setCurrentStep(2);
 
-  // OTP Ref and input handlers
-  const otpInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
-
-  const handleOtpDigitChange = (index: number, val: string) => {
-    const cleanNumbers = val.replace(/\D/g, '');
-    if (cleanNumbers.length > 1) {
-      const newDigits = [...otpDigits];
-      for (let i = 0; i < 6; i++) {
-        newDigits[i] = cleanNumbers[i] || '';
-      }
-      setOtpDigits(newDigits);
-      const nextFocus = Math.min(cleanNumbers.length, 5);
-      otpInputRefs.current[nextFocus]?.focus();
-      return;
-    }
-    const digit = cleanNumbers.slice(-1);
-    const newDigits = [...otpDigits];
-    newDigits[index] = digit;
-    setOtpDigits(newDigits);
-    if (digit && index < 5) {
-      otpInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpInputRefs.current[index - 1]?.focus();
-    }
+    showSuccess(
+      'Mobile Number Saved',
+      'மொபைல் எண் சேமிக்கப்பட்டது',
+      'The shop can use this number to contact you about your order. SMS verification is not enabled.',
+      'உங்கள் ஆர்டர் தொடர்பாக கடை இந்த எண்ணில் உங்களைத் தொடர்புகொள்ளும். SMS சரிபார்ப்பு செய்யப்படவில்லை.'
+    );
   };
 
   // Effective Delivery Fee
@@ -318,15 +230,21 @@ export const Checkout: React.FC = () => {
     setSubmissionError(null);
 
     if (currentStep === 1) {
-      if (!isPhoneVerified) {
-        openAuthModal({
-          reason: isTamil
-            ? 'ஆர்டரைத் தொடர Google உள்நுழைவு மற்றும் மொபைல் எண் தேவை.'
-            : 'Google sign-in and verified mobile number required to proceed.',
-          onSuccess: () => setCurrentStep(2),
-        });
+      const phoneValidation = formatIndianPhoneNumber(customer?.phone || phoneInput);
+      if (!firebaseUser || !isEmailVerified) {
+        setAuthError(
+          isTamil ? 'முதலில் Google மூலம் உள்நுழையவும்.' : 'Please sign in with Google first.'
+        );
         return;
       }
+      if (!phoneValidation.isValid) {
+        setAuthError(
+          isTamil ? 'சரியான 10 இலக்க இந்திய மொபைல் எண்ணை உள்ளிடவும்.' :
+            'Please enter a valid 10-digit Indian mobile number.'
+        );
+        return;
+      }
+      setCustomerPhone(phoneValidation.e164.replace(/^\+91/, ''));
       setCurrentStep(2);
       return;
     }
@@ -364,16 +282,21 @@ export const Checkout: React.FC = () => {
   const handlePlaceOrder = async () => {
     if (isSubmitting) return;
 
-    if (!firebaseUser || !isEmailVerified || !isPhoneVerified) {
+    const phoneValidation = formatIndianPhoneNumber(customer?.phone || phoneInput);
+    if (!firebaseUser || !isEmailVerified || !phoneValidation.isValid) {
       showError(
-        'Verification Required',
-        'சரிபார்ப்பு தேவை',
-        'Please complete Google Sign-In and mobile OTP verification before placing your order.',
-        'ஆர்டர் செய்வதற்கு முன் Google மற்றும் மொபைல் OTP சரிபார்ப்பை முடிக்கவும்.'
+        'Contact Details Required',
+        'தொடர்பு விவரங்கள் தேவை',
+        'Please sign in with a verified Google account and enter a valid Indian mobile number. SMS verification is not required.',
+        'சரிபார்க்கப்பட்ட Google கணக்கில் உள்நுழைந்து சரியான இந்திய மொபைல் எண்ணை உள்ளிடவும். SMS சரிபார்ப்பு தேவையில்லை.'
       );
       setCurrentStep(1);
       return;
     }
+
+    // Keep the contact number locally and send its E.164 value with the order.
+    // The backend stores it as unverified unless Firebase itself asserts a verified phone claim.
+    setCustomerPhone(phoneValidation.e164.replace(/^\+91/, ''));
 
     if (isPaused) {
       showError(
@@ -399,6 +322,7 @@ export const Checkout: React.FC = () => {
       const selectedPayMethod: PaymentMethod = orderType === 'DELIVERY' ? 'CASH_ON_DELIVERY' : 'PAY_AT_STORE';
 
       const orderPayload = {
+        customerPhone: phoneValidation.e164,
         orderType,
         deliveryAddress: orderType === 'DELIVERY' && selectedAddress ? selectedAddress : undefined,
         items: items.map((i) => ({
@@ -510,12 +434,9 @@ export const Checkout: React.FC = () => {
 
         {/* Main Step Flow Container */}
         <div className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm sm:p-8">
-          {/* ================= STEP 1: AUTHENTICATION ================= */}
+          {/* ================= STEP 1: GOOGLE SIGN-IN & CONTACT NUMBER ================= */}
           {currentStep === 1 && (
             <div className="space-y-6">
-              {/* Invisible reCAPTCHA container for Phone Auth (never display:none) */}
-              <div id="recaptcha-checkout-step1" />
-
               <div className="border-b border-stone-100 pb-4">
                 <span className="text-xs font-bold uppercase tracking-wider text-raakky-red">
                   Step 1 of 4
@@ -525,13 +446,12 @@ export const Checkout: React.FC = () => {
                 </h2>
                 <p className="mt-1 text-xs text-stone-500 sm:text-sm">
                   {isTamil
-                    ? 'ஆர்டரின் நிலையை அறியவும், டெலிவரியாளர் தொடர்பு கொள்ளவும் Google கணக்கு மற்றும் சரிபார்க்கப்பட்ட மொபைல் எண் தேவை.'
-                    : 'A verified Google account and Indian mobile number are required to place your chicken order.'}
+                    ? 'Google மூலம் உள்நுழைந்து உங்கள் மொபைல் எண்ணை வழங்கவும்.'
+                    : 'Sign in with Google and provide a mobile number so the shop can contact you about your order.'}
                 </p>
               </div>
 
-              {/* Non-blocking Notice for Popup Dismissed / Blocked / Redirect */}
-              {authNotice && !billingError && !(authError || contextAuthError) && (
+              {authNotice && !(authError || contextAuthError) && (
                 <div className="flex items-start gap-2.5 rounded-2xl border border-stone-200 bg-raakky-cream/80 p-3.5 text-xs text-stone-700">
                   <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-raakky-red" />
                   <div className="flex-1 space-y-1.5">
@@ -552,103 +472,21 @@ export const Checkout: React.FC = () => {
                 </div>
               )}
 
-              {/* Dedicated Firebase Cloud Billing Error Banner */}
-              {billingError && (
-                <div className="rounded-2xl border border-raakky-red/30 bg-raakky-cream p-4 text-xs text-neutral-800 space-y-2 max-w-md">
-                  <div className="flex items-start gap-2.5">
-                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-raakky-red" />
-                    <div className="space-y-1">
-                      <p className="font-bold text-raakky-red">
-                        {isTamil
-                          ? 'உண்மையான SMS சரிபார்ப்பு தற்காலிகமாக கிடைக்கவில்லை'
-                          : 'Real SMS Verification Unavailable'}
-                      </p>
-                      <p className="leading-relaxed text-stone-700">{billingError}</p>
-                      {import.meta.env.DEV && (
-                        <p className="pt-1 text-[11px] font-medium text-stone-500">
-                          {isTamil
-                            ? 'உருவாக்குநர் சோதனை: Firebase Console-இல் அமைக்கப்பட்ட சோதனை மொபைல் எண்கள் மட்டுமே இந்தத் திட்டத்தில் செயல்படும்.'
-                            : 'Development mode: Only Firebase Console configured test phone numbers work without Blaze billing enabled.'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* General Auth / OTP Errors */}
-              {!billingError && (authError || contextAuthError) && (
+              {(authError || contextAuthError) && (
                 <div className="flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-3.5 text-xs font-medium text-red-700 max-w-md">
                   <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
-                  <div className="flex-1 space-y-1.5">
-                    <span>{authError || contextAuthError}</span>
-                    {otpExpired && otpSent && (
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => handleSendOtp()}
-                          disabled={isSendingOtp}
-                          className="inline-flex items-center gap-1 font-bold text-raakky-red hover:underline"
-                        >
-                          <RefreshCw className="h-3 w-3" />
-                          <span>{isTamil ? 'புதிய OTP அனுப்புக' : 'Send a new OTP now'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <span>{authError || contextAuthError}</span>
                 </div>
               )}
 
-              {/* Initial Session Hydration Loader */}
-              {authLoading && !firebaseUser && !isGooglePopupPending ? (
+              {authLoading && (!firebaseUser || !customer) ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-5 max-w-md">
                   <ChilliSpinner size="sm" />
                   <span className="text-xs font-semibold text-stone-600">
                     {isTamil ? 'வாடிக்கையாளர் அமர்வு சரிபார்க்கப்படுகிறது...' : 'Restoring customer session...'}
                   </span>
                 </div>
-              ) : isPhoneVerified ? (
-                /* State A: Verified Customer */
-                <div className="rounded-3xl border border-emerald-200 bg-emerald-50/50 p-6 max-w-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                      <ShieldCheck className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <strong className="text-sm font-bold text-neutral-900">
-                          {customer?.name || firebaseUser?.displayName || 'Customer'}
-                        </strong>
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                          {isTamil ? 'சரிபார்க்கப்பட்டது' : 'Verified'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-stone-600">
-                        +91 {customer?.phone} • {customer?.email || firebaseUser?.email}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep(2)}
-                      className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-raakky-red py-3 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark active:scale-[0.98] transition-all"
-                    >
-                      <span>{isTamil ? 'அடுத்த படிக்குச் செல்' : 'Proceed to Step 2'}</span>
-                      <ArrowLeft className="h-4 w-4 rotate-180" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => logout()}
-                      className="px-4 py-3 rounded-2xl border border-stone-200 bg-white text-xs font-bold text-stone-700 hover:bg-stone-50"
-                    >
-                      {isTamil ? 'வெளியேறு' : 'Change'}
-                    </button>
-                  </div>
-                </div>
               ) : !firebaseUser ? (
-                /* State B: Unauthenticated - Google Sign-In */
                 <div className="space-y-4 max-w-md">
                   <div className="rounded-2xl border border-stone-200 bg-raakky-cream/60 p-4 text-xs text-stone-600">
                     <div className="flex items-center gap-2 font-bold text-neutral-900 mb-1">
@@ -658,7 +496,7 @@ export const Checkout: React.FC = () => {
                     <span>
                       {isTamil
                         ? 'உங்கள் கூடைப் பொருட்கள் மற்றும் முகவரிகளைப் பாதுகாக்க Google மூலம் உள்நுழையவும்.'
-                        : 'Continue with your Google account to verify your identity, track counter updates, and save addresses.'}
+                        : 'Continue with your Google account to save your cart, addresses and order history.'}
                     </span>
                   </div>
 
@@ -692,38 +530,29 @@ export const Checkout: React.FC = () => {
                     )}
                     <span>
                       {isGooglePopupPending
-                        ? isTamil
-                          ? 'Google சாளரத்திற்காக காத்திருக்கிறது...'
-                          : 'Waiting for Google Sign-In...'
-                        : isTamil
-                          ? 'Google மூலம் தொடர்க'
-                          : 'Continue with Google'}
+                        ? (isTamil ? 'Google சாளரத்திற்காக காத்திருக்கிறது...' : 'Waiting for Google Sign-In...')
+                        : (isTamil ? 'Google மூலம் தொடர்க' : 'Continue with Google')}
                     </span>
                   </button>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-stone-500">
-                    <button
-                      type="button"
-                      onClick={() => signInWithGoogleRedirect('/checkout')}
-                      className="font-semibold text-stone-600 hover:text-raakky-red hover:underline"
-                    >
-                      {isTamil ? 'பாப்-அப் வேலை செய்யவில்லையா? முழுப்பக்க உள்நுழைவு' : 'Trouble with popup? Sign in via redirect'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => signInWithGoogleRedirect('/checkout')}
+                    className="w-full text-center text-[11px] font-semibold text-stone-600 hover:text-raakky-red hover:underline"
+                  >
+                    {isTamil ? 'பாப்-அப் வேலை செய்யவில்லையா? முழுப்பக்க உள்நுழைவு' : 'Trouble with popup? Sign in via redirect'}
+                  </button>
                 </div>
               ) : !isEmailVerified ? (
-                /* State C1: Signed in with unverified Google email */
                 <div className="space-y-4 max-w-md rounded-2xl border border-red-200 bg-red-50/70 p-5 text-xs">
                   <div className="flex items-start gap-2.5 text-red-800">
                     <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
                     <div className="space-y-1">
-                      <p className="font-bold">
-                        {isTamil ? 'மின்னஞ்சல் சரிபார்ப்பு தேவை' : 'Verified Email Required'}
-                      </p>
+                      <p className="font-bold">{isTamil ? 'மின்னஞ்சல் சரிபார்ப்பு தேவை' : 'Verified Email Required'}</p>
                       <p className="text-red-700 leading-relaxed">
                         {isTamil
-                          ? 'உங்கள் Google கணக்கின் மின்னஞ்சல் இன்னும் சரிபார்க்கப்படவில்லை. சரிபார்க்கப்பட்ட Google கணக்குடன் உள்நுழையவும்.'
-                          : 'Your signed-in account email is not verified. Please switch to a verified Google account to continue.'}
+                          ? 'சரிபார்க்கப்பட்ட Google மின்னஞ்சல் முகவரியுடன் உள்நுழையவும்.'
+                          : 'Please use a Google account with a verified email address.'}
                       </p>
                     </div>
                   </div>
@@ -735,18 +564,41 @@ export const Checkout: React.FC = () => {
                     {isTamil ? 'வேறு கணக்கில் உள்நுழைக' : 'Sign out & switch account'}
                   </button>
                 </div>
+              ) : isPhoneVerified ? (
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50/50 p-6 max-w-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                      <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <strong className="text-sm font-bold text-neutral-900">
+                        {customer?.name || firebaseUser.displayName || 'Customer'}
+                      </strong>
+                      <div className="text-xs text-stone-600">
+                        +91 {customer?.phone} • {customer?.email || firebaseUser.email}
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-700">
+                        {isTamil ? 'மொபைல் எண் சரிபார்க்கப்பட்டது' : 'Phone number verified'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(2)}
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-raakky-red py-3 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark"
+                  >
+                    {isTamil ? 'அடுத்த படிக்குச் செல்' : 'Continue to delivery'}
+                    <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </button>
+                </div>
               ) : (
-                /* State C2: Google Email Verified, Mobile Number Verification Needed */
                 <div className="space-y-4 max-w-md">
-                  {/* Google User Info */}
                   <div className="flex items-center gap-3 rounded-2xl bg-stone-50 p-3.5 text-xs text-stone-700 border border-stone-200">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-raakky-red/10 text-raakky-red font-bold text-xs">
                       {(firebaseUser.displayName || 'U').charAt(0)}
                     </div>
                     <div className="truncate flex-1">
-                      <div className="font-bold text-neutral-900 truncate">
-                        {firebaseUser.displayName || 'Customer'}
-                      </div>
+                      <div className="font-bold text-neutral-900 truncate">{firebaseUser.displayName || 'Customer'}</div>
                       <div className="text-stone-500 text-[11px] truncate">{firebaseUser.email}</div>
                     </div>
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
@@ -761,116 +613,43 @@ export const Checkout: React.FC = () => {
                     </button>
                   </div>
 
-                  {!otpSent ? (
-                    <form onSubmit={handleSendOtp} className="space-y-4">
-                      <div>
-                        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-stone-700">
-                          {isTamil ? 'இந்திய மொபைல் எண் (+91)' : 'Indian Mobile Number (+91)'} *
-                        </label>
-                        <div className="flex items-center rounded-2xl border border-stone-200 bg-stone-50/50 p-1 focus-within:border-raakky-red focus-within:bg-white focus-within:ring-2 focus-within:ring-raakky-red/20 transition-all">
-                          <span className="flex items-center px-3 text-xs font-bold text-stone-700 border-r border-stone-200 mr-2">
-                            🇮🇳 +91
-                          </span>
-                          <input
-                            type="tel"
-                            maxLength={10}
-                            value={phoneInput}
-                            onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, ''))}
-                            placeholder="98435 99030"
-                            className="w-full bg-transparent py-2.5 pr-3 text-sm font-bold text-neutral-900 placeholder-stone-400 focus:outline-none"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSendingOtp || phoneInput.length !== 10}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-raakky-red py-3.5 font-heading text-xs font-black uppercase tracking-wider text-white shadow-spicy transition-all hover:bg-raakky-red-dark active:scale-[0.99] disabled:opacity-50"
-                      >
-                        {isSendingOtp ? (
-                          <ChilliSpinner size="sm" />
-                        ) : (
-                          <span>{isTamil ? 'OTP குறியீடு பெறுக' : 'Send Verification OTP'}</span>
-                        )}
-                      </button>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                      <div className="flex items-center justify-between text-xs text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-200">
-                        <span>
-                          {isTamil ? 'OTP அனுப்பப்பட்டது:' : 'OTP sent to:'}{' '}
-                          <strong className="text-neutral-900 font-mono">+91 {phoneInput}</strong>
+                  <form onSubmit={handleSavePhone} className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-stone-700">
+                        {isTamil ? 'இந்திய மொபைல் எண் (+91)' : 'Indian Mobile Number (+91)'} *
+                      </label>
+                      <div className="flex items-center rounded-2xl border border-stone-200 bg-stone-50/50 p-1 focus-within:border-raakky-red focus-within:bg-white focus-within:ring-2 focus-within:ring-raakky-red/20 transition-all">
+                        <span className="flex items-center px-3 text-xs font-bold text-stone-700 border-r border-stone-200 mr-2">
+                          🇮🇳 +91
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOtpSent(false);
-                            setOtpExpired(false);
-                            setAuthError(null);
-                          }}
-                          className="font-bold text-raakky-red hover:underline"
-                        >
-                          {t('common.edit')}
-                        </button>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          maxLength={10}
+                          value={phoneInput}
+                          onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          placeholder="98435 99030"
+                          className="w-full bg-transparent py-2.5 pr-3 text-sm font-bold text-neutral-900 placeholder-stone-400 focus:outline-none"
+                          autoFocus
+                        />
                       </div>
+                    </div>
 
-                      <div>
-                        <label className="mb-2 block text-center text-xs font-bold text-stone-700">
-                          {isTamil ? '6 இலக்க OTP எண்ணை உள்ளிடவும்' : 'Enter 6-Digit OTP'}
-                        </label>
-                        <div className="flex items-center justify-center gap-2">
-                          {otpDigits.map((digit, idx) => (
-                            <input
-                              key={idx}
-                              ref={(el) => (otpInputRefs.current[idx] = el)}
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={1}
-                              value={digit}
-                              onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
-                              onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                              className="h-12 w-11 rounded-2xl border-2 border-stone-200 bg-stone-50 text-center font-heading text-lg font-black text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none focus:ring-2 focus:ring-raakky-red/20 transition-all"
-                            />
-                          ))}
-                        </div>
-                      </div>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
+                      {isTamil
+                        ? 'SMS OTP தேவையில்லை. இந்த எண் உங்கள் ஆர்டர் தொடர்பாக கடை உங்களைத் தொடர்புகொள்ள மட்டுமே பயன்படுத்தப்படும்; இது சரிபார்க்கப்படாத எண்.'
+                        : 'No SMS OTP is required. The shop will use this number to contact you about your order. This number is not phone-verified.'}
+                    </div>
 
-                      {/* Resend Countdown */}
-                      <div className="text-center text-xs">
-                        {countdown > 0 ? (
-                          <span className="text-stone-500 font-medium">
-                            {isTamil ? `மீண்டும் அனுப்ப: ${countdown} வினாடிகள்` : `Resend code in ${countdown}s`}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleSendOtp()}
-                            disabled={isSendingOtp}
-                            className="inline-flex items-center gap-1 font-bold text-raakky-red hover:underline"
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                            <span>{isTamil ? 'மீண்டும் OTP அனுப்புக' : 'Resend OTP'}</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isVerifyingOtp || otpDigits.join('').length < 6}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-raakky-red py-3.5 font-heading text-sm font-black uppercase tracking-wider text-white shadow-spicy transition-all hover:bg-raakky-red-dark active:scale-[0.99] disabled:opacity-50"
-                      >
-                        {isVerifyingOtp ? (
-                          <ChilliSpinner size="sm" />
-                        ) : (
-                          <>
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>{isTamil ? 'சரிபார்த்து தொடர்க' : 'Verify & Continue'}</span>
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  )}
+                    <button
+                      type="submit"
+                      disabled={authLoading || !customer || phoneInput.replace(/\D/g, '').length !== 10}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-raakky-red py-3.5 font-heading text-xs font-black uppercase tracking-wider text-white shadow-spicy transition-all hover:bg-raakky-red-dark active:scale-[0.99] disabled:opacity-50"
+                    >
+                      {isTamil ? 'தொடரவும்' : 'Save Number & Continue'}
+                    </button>
+                  </form>
                 </div>
               )}
             </div>

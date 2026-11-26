@@ -310,7 +310,8 @@ export async function verifyFirebaseIdToken(
 
 /**
  * Extracts Authorization Bearer token, cryptographically validates it against Google certs,
- * and strictly enforces verified email + verified E.164 phone claims.
+ * and strictly enforces verified Google email authentication.
+ * Phone number claim from JWT is marked verified ONLY when present and valid E.164.
  */
 export async function requireVerifiedCustomer(
   request: Request,
@@ -345,19 +346,25 @@ export async function requireVerifiedCustomer(
     );
   }
 
-  if (!E164_PHONE_REGEX.test(verified.phoneNumber)) {
+  if (verified.phoneNumber && !E164_PHONE_REGEX.test(verified.phoneNumber)) {
     throw new AuthVerificationError(
-      'A verified mobile number in E.164 format is required before accessing customer orders.',
+      'Token contains a malformed phone_number claim.',
       403,
-      'PHONE_NOT_VERIFIED'
+      'INVALID_TOKEN_PHONE'
     );
   }
+
+  const hasVerifiedJwtPhone = Boolean(verified.phoneNumber && E164_PHONE_REGEX.test(verified.phoneNumber));
 
   return {
     uid: verified.uid,
     email: verified.email,
     emailVerified: true,
-    phone: verified.phoneNumber,
+    jwtPhoneNumber: hasVerifiedJwtPhone ? verified.phoneNumber : '',
+    jwtPhoneVerified: hasVerifiedJwtPhone,
+    phone: hasVerifiedJwtPhone ? verified.phoneNumber : '',
+    selfReportedPhone: '',
+    phoneVerificationStatus: hasVerifiedJwtPhone ? 'VERIFIED' as const : 'NOT_PROVIDED' as const,
     name: verified.name,
   };
 }

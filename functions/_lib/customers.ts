@@ -103,11 +103,20 @@ export function validateAddressInput(raw: any): CustomerAddressRecord {
 /**
  * Ensures one customer record exists per Firebase UID.
  * Never duplicates profiles and never merges distinct accounts purely by email/phone.
+ *
+ * Phone verification status:
+ * - If Firebase JWT contains a verified phone_number claim → phone_verified = true
+ * - If only a self-reported phone is provided → phone_verified = false (unverified)
+ * - The phone column stores whichever is available (JWT-verified takes priority)
  */
 export async function upsertVerifiedCustomer(
   db: D1Database,
   verified: VerifiedFirebaseCustomer
 ): Promise<CustomerProfileDTO> {
+  // Determine the best phone to store: JWT-verified first, then self-reported
+  const effectivePhone = verified.phone || verified.selfReportedPhone || '';
+  const isPhoneVerified = verified.jwtPhoneVerified;
+
   const existingByUid = await db
     .prepare('SELECT * FROM customers WHERE firebase_uid = ? LIMIT 1')
     .bind(verified.uid)
@@ -119,6 +128,14 @@ export async function upsertVerifiedCustomer(
         ? String(existingByUid.name)
         : verified.name;
 
+    // Preserve an already-verified phone; never downgrade a verified phone to unverified
+    const existingPhoneVerified = Boolean(existingByUid.phone_verified ?? existingByUid.is_phone_verified);
+    const finalPhoneVerified = isPhoneVerified || existingPhoneVerified;
+    // If existing phone is verified, keep it unless new JWT also provides a verified phone
+    const finalPhone = (existingPhoneVerified && !isPhoneVerified)
+      ? String(existingByUid.phone || effectivePhone)
+      : (effectivePhone || String(existingByUid.phone || ''));
+
     try {
       await db
         .prepare(
@@ -126,14 +143,21 @@ export async function upsertVerifiedCustomer(
            SET email = ?,
                email_verified = 1,
                phone = ?,
-               phone_verified = 1,
-               is_phone_verified = 1,
+               phone_verified = ?,
+               is_phone_verified = ?,
                name = ?,
                last_login_at = CURRENT_TIMESTAMP,
                updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`
         )
-        .bind(verified.email, verified.phone, keptName, existingByUid.id)
+        .bind(
+          verified.email,
+          finalPhone,
+          finalPhoneVerified ? 1 : 0,
+          finalPhoneVerified ? 1 : 0,
+          keptName,
+          existingByUid.id
+        )
         .run();
     } catch (err: any) {
       if (String(err?.message || '').includes('UNIQUE')) {
@@ -149,21 +173,31 @@ export async function upsertVerifiedCustomer(
     return getCustomerProfileByUid(db, verified.uid);
   }
 
-  // Ensure phone is not claimed by another customer profile (no silent merges across accounts)
-  const existingPhoneOwner = await db
-    .prepare('SELECT id, firebase_uid FROM customers WHERE phone = ? LIMIT 1')
-    .bind(verified.phone)
-    .first<{ id: string; firebase_uid: string | null }>();
+  // Ensure phone is not claimed by another verified customer profile (no silent merges across accounts)
+  if (effectivePhone) {
+    const existingPhoneOwner = await db
+      .prepare('SELECT id, firebase_uid, phone_verified FROM customers WHERE phone = ? LIMIT 1')
+      .bind(effectivePhone)
+      .first<{ id: string; firebase_uid: string | null; phone_verified: number }>();
 
-  if (existingPhoneOwner) {
-    throw new CustomerApiError(
-      'This verified mobile number is already registered under another customer profile. Cannot merge accounts automatically.',
-      409,
-      'ACCOUNT_CONFLICT_NO_MERGE'
-    );
+    if (existingPhoneOwner && String(existingPhoneOwner.firebase_uid) !== verified.uid) {
+      // Only block if the existing owner has a verified phone or the new submission is also verified
+      if (Boolean(existingPhoneOwner.phone_verified) || isPhoneVerified) {
+        throw new CustomerApiError(
+          'This mobile number is already registered under another customer profile. Cannot merge accounts automatically.',
+          409,
+          'ACCOUNT_CONFLICT_NO_MERGE'
+        );
+      }
+      // Both are unverified — allow (later verification will resolve ownership)
+    }
   }
 
   const newCustomerId = verified.uid;
+  // The current schema requires customers.phone to be UNIQUE and NOT NULL.
+  // Use a per-UID internal placeholder until checkout collects a real contact number.
+  // getCustomerProfileByUid masks this placeholder and returns an empty phone to clients.
+  const storedPhone = effectivePhone || `pending:${verified.uid}`;
 
   try {
     await db
@@ -172,9 +206,17 @@ export async function upsertVerifiedCustomer(
           id, firebase_uid, phone, name, email,
           email_verified, phone_verified, is_phone_verified,
           last_login_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 1, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       )
-      .bind(newCustomerId, verified.uid, verified.phone, verified.name, verified.email)
+      .bind(
+        newCustomerId,
+        verified.uid,
+        storedPhone,
+        verified.name,
+        verified.email,
+        isPhoneVerified ? 1 : 0,
+        isPhoneVerified ? 1 : 0
+      )
       .run();
   } catch (err: any) {
     // Handle race condition where concurrent request created the exact same firebase_uid row
@@ -240,7 +282,7 @@ export async function getCustomerProfileByUid(
     name: String(row.name || 'Customer'),
     email: String(row.email || ''),
     emailVerified: Boolean(row.email_verified),
-    phone: String(row.phone),
+    phone: String(row.phone || '').startsWith('pending:') ? '' : String(row.phone || ''),
     phoneVerified: Boolean(row.phone_verified ?? row.is_phone_verified),
     isPhoneVerified: Boolean(row.phone_verified ?? row.is_phone_verified),
     addresses,
@@ -281,19 +323,31 @@ export async function updateCustomerProfileByUid(
       throw new CustomerApiError('Name must be between 2 and 80 characters', 400, 'INVALID_NAME');
     }
 
+    const effectivePhone = verified.phone || verified.selfReportedPhone || '';
+    const isPhoneVerified = verified.jwtPhoneVerified;
+
     await db
       .prepare(
         `UPDATE customers
          SET name = ?,
              email = ?,
              email_verified = 1,
-             phone = ?,
-             phone_verified = 1,
-             is_phone_verified = 1,
+             phone = CASE WHEN phone_verified = 1 THEN phone WHEN ? <> '' THEN ? ELSE phone END,
+             phone_verified = CASE WHEN phone_verified = 1 THEN 1 ELSE ? END,
+             is_phone_verified = CASE WHEN is_phone_verified = 1 THEN 1 ELSE ? END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND firebase_uid = ?`
       )
-      .bind(cleanedName, verified.email, verified.phone, existing.id, verified.uid)
+      .bind(
+        cleanedName,
+        verified.email,
+        effectivePhone,
+        effectivePhone,
+        isPhoneVerified ? 1 : 0,
+        isPhoneVerified ? 1 : 0,
+        existing.id,
+        verified.uid
+      )
       .run();
   }
 

@@ -32,11 +32,22 @@ export interface Env {
   JWT_SECRET?: string;
 }
 
+export type PhoneVerificationStatus = 'VERIFIED' | 'UNVERIFIED' | 'NOT_PROVIDED';
+
 export interface VerifiedFirebaseCustomer {
   uid: string;
   email: string;
   emailVerified: true;
+  /** Cryptographically verified E.164 phone from Firebase JWT phone_number claim (empty if OTP skipped) */
+  jwtPhoneNumber: string;
+  /** True ONLY when Firebase JWT explicitly asserts a verified phone_number claim */
+  jwtPhoneVerified: boolean;
+  /** Alias matching jwtPhoneNumber when Firebase Phone Auth is linked */
   phone: string;
+  /** Customer-submitted E.164 phone (may be unverified, submitted from checkout) */
+  selfReportedPhone: string;
+  /** Overall phone verification status */
+  phoneVerificationStatus: PhoneVerificationStatus;
   name: string;
 }
 

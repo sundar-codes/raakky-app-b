@@ -102,6 +102,10 @@ export interface AuthContextType {
   deleteAddress: (addressId: string) => Promise<void>;
   setDefaultAddress: (addressId: string) => Promise<void>;
 
+  // Customer phone (self-reported, unverified)
+  setCustomerPhone: (phone: string) => void;
+  hasValidPhone: boolean;
+
   // Global Auth Modal Controls
   isAuthModalOpen: boolean;
   authModalOptions: AuthModalOptions | null;
@@ -194,8 +198,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         createdAt: user.metadata.creationTime || new Date().toISOString(),
       };
 
-      // When email + Indian mobile number are both verified in Firebase, hydrate/create D1 customer profile
-      if (user.emailVerified && hasLinkedPhone && cleanPhone) {
+      // When email is verified, hydrate/create D1 customer profile
+      // Allow syncing even without Firebase-verified phone (self-reported phone case)
+      if (user.emailVerified) {
         try {
           let syncedProfile = await api.getCustomerProfile(Boolean(options?.forceRefreshToken));
 
@@ -744,7 +749,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!customer) return;
       const trimmedName = name.trim() || customer.name;
 
-      if (firebaseUser?.emailVerified && customer.isPhoneVerified) {
+      if (firebaseUser?.emailVerified) {
         const synced = await api.updateCustomerProfile({ name: trimmedName });
         setCustomer(synced);
         safeStorage.set(StorageKeys.CUSTOMER, synced);
@@ -786,7 +791,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const defaultAddr = updatedAddresses.find((a) => a.isDefault) || updatedAddresses[0];
 
-      if (firebaseUser?.emailVerified && customer.isPhoneVerified) {
+      if (firebaseUser?.emailVerified) {
         const synced = await api.updateCustomerProfile({
           addresses: updatedAddresses,
           defaultAddressId: defaultAddr?.id,
@@ -821,7 +826,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           ? updatedAddresses[0]?.id
           : customer.defaultAddressId;
 
-      if (firebaseUser?.emailVerified && customer.isPhoneVerified) {
+      if (firebaseUser?.emailVerified) {
         const synced = await api.updateCustomerProfile({
           addresses: updatedAddresses,
           defaultAddressId: nextDefaultId,
@@ -854,7 +859,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isDefault: a.id === addressId,
       }));
 
-      if (firebaseUser?.emailVerified && customer.isPhoneVerified) {
+      if (firebaseUser?.emailVerified) {
         const synced = await api.updateCustomerProfile({
           addresses: updatedAddresses,
           defaultAddressId: addressId,
@@ -887,6 +892,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       customer?.phone
   );
 
+  // A customer has a valid phone if they have a 10-digit Indian number stored
+  // (regardless of whether it was OTP-verified or self-reported)
+  const hasValidPhone = Boolean(customer?.phone && /^[6-9]\d{9}$/.test(customer.phone));
+
+  // Allow customer to set a self-reported phone number (not OTP-verified)
+  const setCustomerPhone = useCallback(
+    (phone: string) => {
+      if (!customer) return;
+      const cleanDigits = phone.replace(/\D/g, '').slice(-10);
+      if (!/^[6-9]\d{9}$/.test(cleanDigits)) return;
+
+      const updatedCustomer: Customer = {
+        ...customer,
+        phone: cleanDigits,
+        // Explicitly never mark as verified — only Firebase phone auth can do that
+        isPhoneVerified: customer.isPhoneVerified || false,
+      };
+      setCustomer(updatedCustomer);
+      safeStorage.set(StorageKeys.CUSTOMER, updatedCustomer);
+    },
+    [customer]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -916,6 +944,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         saveAddress,
         deleteAddress,
         setDefaultAddress,
+        setCustomerPhone,
+        hasValidPhone,
         isAuthModalOpen,
         authModalOptions,
         openAuthModal,

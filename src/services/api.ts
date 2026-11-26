@@ -1029,7 +1029,7 @@ export const api = {
     payload: {
       customerId?: string;
       customerName?: string;
-      customerPhone?: string;
+      customerPhone: string;
       orderType: 'DELIVERY' | 'PICKUP';
       deliveryAddress?: CustomerAddress;
       paymentMethod: PaymentMethod;
@@ -1046,6 +1046,11 @@ export const api = {
     },
     options?: { idempotencyKey?: string }
   ): Promise<Order> {
+    // Require an Indian contact number, but do not require SMS/phone verification.
+    if (!/^\+91[6-9]\d{9}$/.test(payload.customerPhone)) {
+      throw new Error('Please enter a valid Indian mobile number before placing your order.');
+    }
+
     // Validate delivery locality before sending request
     if (payload.orderType === 'DELIVERY') {
       if (!payload.deliveryAddress?.localityId) {
@@ -1072,6 +1077,7 @@ export const api = {
         : `ordk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
 
     const requestBody = {
+      customerPhone: payload.customerPhone,
       orderType: payload.orderType,
       deliveryAddress: payload.orderType === 'DELIVERY' ? payload.deliveryAddress : undefined,
       paymentMethod: payload.paymentMethod,

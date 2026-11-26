@@ -23,6 +23,7 @@ import {
   listOrdersForCustomer,
 } from '../_lib/orders.ts';
 import { checkRateLimit, getClientIp } from '../_lib/rateLimit.ts';
+import { validateIndianPhoneNumber as validateIndianPhone } from '../_lib/phone.ts';
 
 async function safeJson(request: Request): Promise<any> {
   try {
@@ -275,7 +276,7 @@ export const onRequest = async (context: {
     }
 
     // ---------------------------------------------------------
-    // AUTHENTICATED CUSTOMER APIs (Requires verified Firebase JWT + email + E.164 phone)
+    // AUTHENTICATED CUSTOMER APIs (Requires a valid Firebase JWT and verified Google email; phone is collected separately)
     // ---------------------------------------------------------
     if (path === '/customer/profile' && method === 'GET') {
       const verified = await requireVerifiedCustomer(request, env);
@@ -293,7 +294,21 @@ export const onRequest = async (context: {
         });
       }
 
-      const profile = await upsertVerifiedCustomer(env.DB, verified);
+      // Accept customer-submitted phone via query param for profile sync when phone is not JWT-verified
+      let verifiedWithPhone = verified;
+      const phoneParam = url.searchParams.get('phone');
+      if (!verified.phone && phoneParam) {
+        const phoneResult = validateIndianPhone(phoneParam);
+        if (phoneResult.isValid) {
+          verifiedWithPhone = {
+            ...verified,
+            selfReportedPhone: phoneResult.e164,
+            phoneVerificationStatus: 'UNVERIFIED' as const,
+          };
+        }
+      }
+
+      const profile = await upsertVerifiedCustomer(env.DB, verifiedWithPhone);
       return jsonResponse(request, env, profile, 200, { sensitive: true });
     }
 
@@ -409,9 +424,23 @@ export const onRequest = async (context: {
         });
       }
 
+      // Accept customer-submitted phone number for orders where phone is not JWT-verified
+      // The phone module validates Indian E.164 format server-side
+      let verifiedWithPhone = verified;
+      if (!verified.phone && body.customerPhone) {
+        const phoneResult = validateIndianPhone(body.customerPhone);
+        if (phoneResult.isValid) {
+          verifiedWithPhone = {
+            ...verified,
+            selfReportedPhone: phoneResult.e164,
+            phoneVerificationStatus: 'UNVERIFIED' as const,
+          };
+        }
+      }
+
       const { order, idempotentReplay } = await createCustomerOrder(
         env.DB,
-        verified,
+        verifiedWithPhone,
         body,
         request.headers.get('X-Idempotency-Key')
       );
