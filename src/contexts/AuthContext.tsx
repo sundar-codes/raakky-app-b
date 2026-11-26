@@ -3,6 +3,7 @@ import { User, ConfirmationResult } from 'firebase/auth';
 import { Customer, CustomerAddress } from '../types';
 import { safeStorage, StorageKeys } from '../services/storage';
 import { api } from '../services/api';
+import { isFirebaseConfigured, firebaseConfigError } from '../services/firebase';
 import { useLanguage } from './LanguageContext';
 import {
   triggerGooglePopupDirect,
@@ -342,6 +343,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAuthError(null);
       setAuthNotice(null);
 
+      if (!isFirebaseConfigured) {
+        const msg =
+          firebaseConfigError ||
+          (isTamil
+            ? 'Firebase அங்கீகார அமைப்பு முழுமையடையவில்லை.'
+            : 'Firebase authentication is not configured in this environment.');
+        setAuthError(msg);
+        return Promise.resolve({
+          success: false,
+          hasLinkedPhone: false,
+          error: msg,
+        });
+      }
+
       const targetRedirect = options?.redirectPath || '/checkout';
 
       // Embedded WebView / standalone iOS PWA: popups reliably fail, use redirect fallback
@@ -504,6 +519,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       navigateFn('/checkout');
       setAuthError(null);
       setAuthNotice(null);
+
+      if (!isFirebaseConfigured) {
+        setAuthError(
+          firebaseConfigError ||
+            (isTamil
+              ? 'Firebase அங்கீகார அமைப்பு முழுமையடையவில்லை.'
+              : 'Firebase authentication is not configured for this build.')
+        );
+        return;
+      }
 
       // WebView / standalone PWA redirect path (wait briefly so any addToCart effect commits)
       if (isInAppOrStandaloneBrowser()) {

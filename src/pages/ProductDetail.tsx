@@ -192,7 +192,8 @@ export const ProductDetail: React.FC = () => {
         const prod = await api.getProductById(id);
         if (prod) {
           setProduct(prod);
-          const defaultVariant = prod.variants.find((v: ProductVariant) => v.isAvailable) || prod.variants[0];
+          const variants = Array.isArray(prod.variants) ? prod.variants : [];
+          const defaultVariant = variants.find((v: ProductVariant) => v.isAvailable) || variants[0] || null;
           setSelectedVariant(defaultVariant);
           if (prod.supportedCuts && prod.supportedCuts.length > 0) {
             setCutType(prod.supportedCuts[0]);

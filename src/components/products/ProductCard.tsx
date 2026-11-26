@@ -17,11 +17,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddedToCart
   const { isTamil, language, t } = useLanguage();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant>(() => {
-    return product.variants.find(v => v.isAvailable) || product.variants[0];
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(() => {
+    return variants.find(v => v.isAvailable) || variants[0];
   });
 
-  const isAvailable = product.isAvailable && product.variants.some(v => v.isAvailable);
+  const isAvailable = Boolean(product.isAvailable) && variants.some(v => v.isAvailable);
   const isBestValue = selectedVariant ? api.isBestValueVariant(product, selectedVariant) : false;
 
   return (
@@ -83,8 +84,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddedToCart
           <div className="space-y-2 sm:space-y-3 pt-1.5 sm:pt-2 border-t border-stone-100">
             {/* Package selector pills - horizontally scrollable on mobile */}
             <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              {product.variants.map(variant => {
-                const isSelected = selectedVariant.id === variant.id;
+              {variants.map(variant => {
+                const isSelected = selectedVariant?.id === variant.id;
                 return (
                   <button
                     key={variant.id}
@@ -111,20 +112,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddedToCart
               <div className="min-w-0">
                 <div className="flex items-baseline gap-1">
                   <span className="text-sm sm:text-lg font-black text-raakky-red font-sans">
-                    {formatCurrency(selectedVariant.price)}
+                    {formatCurrency(selectedVariant?.price ?? 0)}
                   </span>
                 </div>
                 <p className="text-[9px] sm:text-[10px] text-stone-400 font-medium truncate">
-                  {formatWeight(selectedVariant.weightGrams, language)}
+                  {selectedVariant ? formatWeight(selectedVariant.weightGrams, language) : ''}
                 </p>
               </div>
 
               <button
                 type="button"
-                disabled={!isAvailable || !selectedVariant.isAvailable}
+                disabled={!isAvailable || !selectedVariant?.isAvailable}
                 onClick={() => setIsModalOpen(true)}
                 className={`py-1.5 px-2 sm:py-2 sm:px-3.5 rounded-xl sm:rounded-2xl font-bold text-[11px] sm:text-xs flex items-center gap-1 transition-all shadow-2xs active:scale-95 flex-shrink-0 ${
-                  !isAvailable || !selectedVariant.isAvailable
+                  !isAvailable || !selectedVariant?.isAvailable
                     ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none'
                     : 'bg-raakky-red text-white hover:bg-raakky-red-dark hover:shadow-spicy'
                 }`}

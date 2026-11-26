@@ -68,7 +68,7 @@ export const Home: React.FC = () => {
               p.id === 'prod-curry-pieces' ||
               p.id === 'prod-biryani-cut' ||
               p.id === 'prod-with-bone' ||
-              p.searchAliases.some(a => a.toLowerCase().includes('curry'))
+              (p.searchAliases || []).some(a => a.toLowerCase().includes('curry'))
           );
           break;
         case 'boneless':
@@ -85,20 +85,20 @@ export const Home: React.FC = () => {
             p =>
               p.id === 'prod-leg' ||
               p.id === 'prod-thigh' ||
-              p.searchAliases.some(a => a.toLowerCase().includes('leg') || a.toLowerCase().includes('drumstick'))
+              (p.searchAliases || []).some(a => a.toLowerCase().includes('leg') || a.toLowerCase().includes('drumstick'))
           );
           break;
         case '65-fry':
           list = list.filter(
             p =>
               p.id === 'prod-chicken-65-fry' ||
-              p.searchAliases.some(a => a.toLowerCase().includes('65'))
+              (p.searchAliases || []).some(a => a.toLowerCase().includes('65'))
           );
           break;
         case 'chukka':
           list = list.filter(
             p =>
-              p.searchAliases.some(a => a.toLowerCase().includes('chukka') || a.toLowerCase().includes('sukka'))
+              (p.searchAliases || []).some(a => a.toLowerCase().includes('chukka') || a.toLowerCase().includes('sukka'))
           );
           break;
         case 'wings':
@@ -106,7 +106,7 @@ export const Home: React.FC = () => {
             p =>
               p.id === 'prod-wings' ||
               p.id === 'prod-lollipop' ||
-              p.searchAliases.some(a => a.toLowerCase().includes('wing') || a.toLowerCase().includes('lollipop'))
+              (p.searchAliases || []).some(a => a.toLowerCase().includes('wing') || a.toLowerCase().includes('lollipop'))
           );
           break;
         case 'cat-curry-chukka':
@@ -132,11 +132,11 @@ export const Home: React.FC = () => {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(p => {
         const matchName =
-          p.nameEn.toLowerCase().includes(q) ||
-          p.nameTa.toLowerCase().includes(q) ||
-          p.shortDescEn.toLowerCase().includes(q) ||
-          p.shortDescTa.toLowerCase().includes(q);
-        const matchAlias = p.searchAliases.some(a => a.toLowerCase().includes(q));
+          (p.nameEn || '').toLowerCase().includes(q) ||
+          (p.nameTa || '').toLowerCase().includes(q) ||
+          (p.shortDescEn || '').toLowerCase().includes(q) ||
+          (p.shortDescTa || '').toLowerCase().includes(q);
+        const matchAlias = (p.searchAliases || []).some(a => a.toLowerCase().includes(q));
         return matchName || matchAlias;
       });
     }

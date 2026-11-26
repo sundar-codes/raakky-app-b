@@ -12,11 +12,19 @@ import {
 } from '../types';
 import { safeStorage, StorageKeys } from './storage';
 import { auth } from './firebase';
+import {
+  normalizeCategoryDto,
+  normalizeProductDto,
+  normalizeShopSettingsDto,
+  unwrapArrayPayload,
+  unwrapObjectPayload,
+} from './dtoNormalizers';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const API_BASE_URL =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL || '/api';
 
 async function getFirebaseBearerHeaders(forceRefresh = false): Promise<Record<string, string>> {
-  const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
   if (!currentUser) {
     throw new Error('Please sign in with Google and verify your mobile number to continue.');
   }
@@ -818,8 +826,10 @@ export function calculateCompletedPurchasesCount(productId: string): number {
  * based on actual configured price per kilogram relative to other variants of that product.
  */
 export function isBestValueVariant(variant: { weightGrams: number; price: number }, allVariants: { weightGrams: number; price: number }[]): boolean {
-  if (allVariants.length <= 1) return false;
-  const unitPrices = allVariants.map(v => ({
+  if (!Array.isArray(allVariants) || allVariants.length <= 1 || !variant || !variant.weightGrams) return false;
+  const validVariants = allVariants.filter(v => v && Number(v.weightGrams) > 0 && Number.isFinite(Number(v.price)));
+  if (validVariants.length <= 1) return false;
+  const unitPrices = validVariants.map(v => ({
     ...v,
     pricePerKg: (v.price / v.weightGrams) * 1000,
   }));
@@ -827,7 +837,7 @@ export function isBestValueVariant(variant: { weightGrams: number; price: number
   const currentPricePerKg = (variant.price / variant.weightGrams) * 1000;
 
   // Only if this variant is the lowest price/kg AND strictly cheaper per kg than the smallest package
-  const smallest = allVariants.reduce((prev, curr) => (curr.weightGrams < prev.weightGrams ? curr : prev));
+  const smallest = validVariants.reduce((prev, curr) => (curr.weightGrams < prev.weightGrams ? curr : prev));
   const smallestPricePerKg = (smallest.price / smallest.weightGrams) * 1000;
 
   return Math.abs(currentPricePerKg - minPricePerKg) < 0.01 && currentPricePerKg < smallestPricePerKg - 5;
@@ -838,7 +848,11 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/shop/settings`);
       if (res.ok) {
-        return await res.json();
+        const raw = await res.json();
+        const obj = unwrapObjectPayload(raw, ['settings', 'data']);
+        if (obj) {
+          return normalizeShopSettingsDto(obj, DEFAULT_SHOP_SETTINGS);
+        }
       }
     } catch {
       // Fallback
@@ -854,7 +868,18 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/categories`);
       if (res.ok) {
-        return await res.json();
+        const raw = await res.json();
+        const arr = unwrapArrayPayload(raw, ['categories']);
+        if (arr) {
+          const normalized = arr
+            .filter((item): item is Record<string, any> => Boolean(item && typeof item === 'object'))
+            .map(normalizeCategoryDto)
+            .filter((cat) => cat.id && !cat.slug.endsWith('-legacy'))
+            .sort((a, b) => a.displayOrder - b.displayOrder);
+          if (normalized.length > 0) {
+            return normalized;
+          }
+        }
       }
     } catch {
       // Fallback
@@ -868,46 +893,60 @@ export const api = {
     inStockOnly?: boolean;
     sortBy?: 'featured' | 'popular' | 'best-value' | 'price-asc' | 'price-desc' | 'name';
   }): Promise<Product[]> {
+    let list: Product[] | null = null;
     try {
       const url = new URL(`${API_BASE_URL}/products`, window.location.origin);
       if (params?.category) url.searchParams.set('category', params.category);
       if (params?.search) url.searchParams.set('search', params.search);
       const res = await fetch(url.toString());
       if (res.ok) {
-        return await res.json();
+        const raw = await res.json();
+        const arr = unwrapArrayPayload(raw, ['products']);
+        if (arr) {
+          list = arr
+            .filter((item): item is Record<string, any> => Boolean(item && typeof item === 'object'))
+            .map(normalizeProductDto)
+            .filter((p) => p.id && !p.slug.endsWith('-legacy'));
+        }
       }
     } catch {
-      // Fallback
+      // Fallback below
     }
 
-    let list = [...INITIAL_PRODUCTS];
+    if (!list) {
+      list = [...INITIAL_PRODUCTS];
 
-    if (params?.category && params.category !== 'all') {
-      list = list.filter(p => p.categoryId === params.category);
-    }
+      if (params?.category && params.category !== 'all') {
+        list = list.filter(p => p.categoryId === params.category);
+      }
 
-    if (params?.search && params.search.trim()) {
-      const s = params.search.toLowerCase().trim();
-      list = list.filter(p => {
-        const matchName =
-          p.nameEn.toLowerCase().includes(s) ||
-          p.nameTa.toLowerCase().includes(s) ||
-          p.shortDescEn.toLowerCase().includes(s) ||
-          p.shortDescTa.toLowerCase().includes(s);
-        const matchAlias = p.searchAliases.some(alias => alias.toLowerCase().includes(s) || s.includes(alias.toLowerCase()));
-        return matchName || matchAlias;
-      });
+      if (params?.search && params.search.trim()) {
+        const s = params.search.toLowerCase().trim();
+        list = list.filter(p => {
+          const matchName =
+            p.nameEn.toLowerCase().includes(s) ||
+            p.nameTa.toLowerCase().includes(s) ||
+            p.shortDescEn.toLowerCase().includes(s) ||
+            p.shortDescTa.toLowerCase().includes(s);
+          const matchAlias = (p.searchAliases || []).some(
+            alias => alias.toLowerCase().includes(s) || s.includes(alias.toLowerCase())
+          );
+          return matchName || matchAlias;
+        });
+      }
     }
 
     if (params?.inStockOnly) {
       list = list.filter(p => p.isAvailable && p.variants.some(v => v.isAvailable));
     }
 
-    // Sort order
+    const minPrice = (p: Product) =>
+      p.variants.length > 0 ? Math.min(...p.variants.map(v => v.price)) : 0;
+
     if (params?.sortBy === 'price-asc') {
-      list.sort((a, b) => Math.min(...a.variants.map(v => v.price)) - Math.min(...b.variants.map(v => v.price)));
+      list.sort((a, b) => minPrice(a) - minPrice(b));
     } else if (params?.sortBy === 'price-desc') {
-      list.sort((a, b) => Math.min(...b.variants.map(v => v.price)) - Math.min(...a.variants.map(v => v.price)));
+      list.sort((a, b) => minPrice(b) - minPrice(a));
     } else if (params?.sortBy === 'name') {
       list.sort((a, b) => a.nameEn.localeCompare(b.nameEn));
     } else if (params?.sortBy === 'popular') {
@@ -919,9 +958,13 @@ export const api = {
 
   async getProductById(id: string): Promise<Product | null> {
     try {
-      const res = await fetch(`${API_BASE_URL}/products/${id}`);
+      const res = await fetch(`${API_BASE_URL}/products/${encodeURIComponent(id)}`);
       if (res.ok) {
-        return await res.json();
+        const raw = await res.json();
+        const obj = unwrapObjectPayload(raw, ['product', 'data']);
+        if (obj && obj.id) {
+          return normalizeProductDto(obj);
+        }
       }
     } catch {
       // Fallback
@@ -1068,7 +1111,7 @@ export const api = {
   },
 
   async getOrderById(orderId: string): Promise<Order | null> {
-    if (!auth.currentUser) {
+    if (!auth?.currentUser) {
       throw new Error('Please sign in to view order details.');
     }
 
@@ -1092,7 +1135,7 @@ export const api = {
   },
 
   async getCustomerOrders(_customerIdOrPhone?: string): Promise<Order[]> {
-    if (!auth.currentUser) {
+    if (!auth?.currentUser) {
       return [];
     }
 

@@ -11,8 +11,20 @@ import {
   UserCredential,
   onAuthStateChanged,
   Unsubscribe,
+  Auth,
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, firebaseConfigError } from './firebase';
+
+function requireFirebaseAuth(): Auth {
+  if (!auth) {
+    const err = new Error(
+      firebaseConfigError || 'Firebase Authentication is not configured for this build.'
+    ) as Error & { code?: string };
+    err.code = 'auth/configuration-missing';
+    throw err;
+  }
+  return auth;
+}
 
 export interface PhoneValidationResult {
   isValid: boolean;
@@ -118,7 +130,7 @@ export function createGoogleProvider(): GoogleAuthProvider {
  */
 export function triggerGooglePopupDirect(): Promise<UserCredential> {
   const provider = createGoogleProvider();
-  return signInWithPopup(auth, provider);
+  return signInWithPopup(requireFirebaseAuth(), provider);
 }
 
 /**
@@ -126,13 +138,16 @@ export function triggerGooglePopupDirect(): Promise<UserCredential> {
  */
 export function triggerGoogleRedirect(): Promise<void> {
   const provider = createGoogleProvider();
-  return signInWithRedirect(auth, provider);
+  return signInWithRedirect(requireFirebaseAuth(), provider);
 }
 
 /**
  * Resolves any pending redirect result when returning from Google full-page authentication
  */
 export function resolveGoogleRedirectResult(): Promise<UserCredential | null> {
+  if (!auth) {
+    return Promise.resolve(null);
+  }
   return getRedirectResult(auth);
 }
 
@@ -193,7 +208,7 @@ export function getOrCreateRecaptchaVerifier(
   clearRecaptchaVerifier(container);
 
   activeRecaptchaContainer = container;
-  const verifier = new RecaptchaVerifier(auth, container, {
+  const verifier = new RecaptchaVerifier(requireFirebaseAuth(), container, {
     size: 'invisible',
     callback: () => {
       // reCAPTCHA solved - Firebase proceeds with linkWithPhoneNumber
@@ -273,7 +288,7 @@ export async function confirmPhoneOtpAndReload(
   try {
     await confirmationResult.confirm(cleanedCode);
 
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
       await auth.currentUser.reload();
       return auth.currentUser;
     }
@@ -292,7 +307,9 @@ export async function confirmPhoneOtpAndReload(
  */
 export async function signOutCustomer(): Promise<void> {
   clearRecaptchaVerifier();
-  await signOut(auth);
+  if (auth) {
+    await signOut(auth);
+  }
 }
 
 /**
@@ -301,6 +318,10 @@ export async function signOutCustomer(): Promise<void> {
 export function onCustomerAuthStateChanged(
   callback: (user: User | null) => void
 ): Unsubscribe {
+  if (!auth) {
+    callback(null);
+    return () => {};
+  }
   return onAuthStateChanged(auth, callback);
 }
 
@@ -325,6 +346,14 @@ export function parseAuthError(
   };
 
   switch (code) {
+    case 'auth/configuration-missing':
+      return {
+        ...base,
+        message: isTamil
+          ? 'இந்தச் சூழலில் Firebase உள்நுழைவு கட்டமைக்கப்படவில்லை. தயவுசெய்து VITE_FIREBASE_* மாறிகளை அமைக்கவும்.'
+          : rawMessage || 'Firebase authentication is not configured in this build.',
+      };
+
     case 'auth/billing-not-enabled':
       return {
         ...base,
