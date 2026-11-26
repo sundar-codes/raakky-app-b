@@ -95,9 +95,11 @@ export const CuttingPreferencesModal: React.FC<CuttingPreferencesModalProps> = (
 
   useEffect(() => {
     if (product) {
-      const firstAvailable = product.variants.find(v => v.isAvailable) || product.variants[0];
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const cuts = Array.isArray(product.supportedCuts) ? product.supportedCuts : [];
+      const firstAvailable = variants.find(v => v.isAvailable) || variants[0];
       setSelectedVariant(firstAvailable || null);
-      setSelectedCut(product.supportedCuts[0] || 'curry_medium');
+      setSelectedCut(cuts[0] || 'curry_medium');
       setSelectedSkin('skin_off');
       setSpecialNote('');
       setQuantity(1);
@@ -199,7 +201,7 @@ export const CuttingPreferencesModal: React.FC<CuttingPreferencesModalProps> = (
           </div>
 
           {/* Important Plain Meat Notice for Chicken 65 */}
-          {product.id === 'prod_65_fry_cut' && (
+          {(product.id === 'prod-chicken-65-fry' || product.id === 'prod_65_fry_cut') && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-2 text-amber-950 text-xs">
               <Info className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
               <span>{t('catalog.plainMeatNotice')}</span>

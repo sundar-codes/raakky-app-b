@@ -22,6 +22,7 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { useShop } from '../contexts/ShopContext';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { formatCurrency, formatWeight } from '../utils/formatters';
 import { Product, ProductVariant, CutType, SkinType, CuttingPreference } from '../types';
@@ -167,6 +168,7 @@ export const ProductDetail: React.FC = () => {
   const { t, isTamil, language } = useLanguage();
   const { isPaused, settings } = useShop();
   const { addToCart } = useCart();
+  const { initiateCheckoutAuth } = useAuth();
   const { showSuccess } = useNotification();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -190,7 +192,8 @@ export const ProductDetail: React.FC = () => {
         const prod = await api.getProductById(id);
         if (prod) {
           setProduct(prod);
-          const defaultVariant = prod.variants.find((v: ProductVariant) => v.isAvailable) || prod.variants[0];
+          const variants = Array.isArray(prod.variants) ? prod.variants : [];
+          const defaultVariant = variants.find((v: ProductVariant) => v.isAvailable) || variants[0] || null;
           setSelectedVariant(defaultVariant);
           if (prod.supportedCuts && prod.supportedCuts.length > 0) {
             setCutType(prod.supportedCuts[0]);
@@ -279,7 +282,7 @@ export const ProductDetail: React.FC = () => {
   const handleOrderNow = () => {
     if (!selectedVariant || !isAvailable) return;
 
-    // Direct 1-Click to Checkout
+    // Direct 1-Click to Checkout + synchronous Google Auth trigger if unauthenticated
     addToCart({
       product,
       variant: selectedVariant,
@@ -287,7 +290,7 @@ export const ProductDetail: React.FC = () => {
       cuttingPreference: getCuttingPreference(),
     });
 
-    navigate('/checkout');
+    initiateCheckoutAuth(navigate);
   };
 
   const handleQuantityChange = (delta: number) => {

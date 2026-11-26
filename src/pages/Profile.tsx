@@ -14,20 +14,25 @@ import {
   Clock,
   Sparkles,
   Download,
-  QrCode
+  QrCode,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog';
-import { CustomerAddress } from '../types';
+import { CustomerAddress, DeliveryLocalityId } from '../types';
+import { SUPPORTED_LOCALITIES } from '../services/api';
 
 export const Profile: React.FC = () => {
   const { t, language, setLanguage, isTamil } = useLanguage();
   const {
     customer,
+    firebaseUser,
     isAuthenticated,
     isPhoneVerified,
+    openAuthModal,
     logout,
     updateProfile,
     saveAddress,
@@ -47,6 +52,8 @@ export const Profile: React.FC = () => {
     label: 'Home' as 'Home' | 'Work' | 'Other',
     recipientName: customer?.name || '',
     recipientPhone: customer?.phone || '',
+    localityId: 'press-colony' as DeliveryLocalityId,
+    localityName: 'Press Colony',
     flatNumber: '',
     streetAddress: '',
     landmark: '',
@@ -89,6 +96,8 @@ export const Profile: React.FC = () => {
         label: 'Home',
         recipientName: customer?.name || '',
         recipientPhone: customer?.phone || '',
+        localityId: 'press-colony' as DeliveryLocalityId,
+        localityName: 'Press Colony',
         flatNumber: '',
         streetAddress: '',
         landmark: '',
@@ -106,83 +115,135 @@ export const Profile: React.FC = () => {
     <div className="min-h-screen bg-stone-50 pb-28 pt-4 md:py-8">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         {/* Profile Header Card */}
-        <div className="mb-6 overflow-hidden rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-raakky-red to-raakky-orange text-2xl font-black text-white shadow-md">
-                {(customer?.name || 'R').charAt(0).toUpperCase()}
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-heading text-2xl font-black text-neutral-900 sm:text-3xl">
-                    {customer?.name || (isTamil ? 'அன்புள்ள வாடிக்கையாளர்' : 'Valued Customer')}
+        {!isAuthenticated ? (
+          <div className="mb-6 overflow-hidden rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-raakky-red to-raakky-red-dark text-white p-2.5 shadow-md">
+                  <img
+                    src="/images/raakky-brand-badge.png"
+                    alt="Raakky Chicken"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="font-heading text-xl sm:text-2xl font-black text-neutral-900">
+                    {isTamil ? 'ராக்கி சிக்கன் வாடிக்கையாளர் கணக்கு' : 'Customer Account'}
                   </h1>
-                </div>
-
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
-                  {customer?.phone && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-700">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      +91 {customer.phone} ({isTamil ? 'சரிபார்க்கப்பட்டது' : 'Verified'})
-                    </span>
-                  )}
-                  {customer?.email && (
-                    <span className="inline-flex items-center gap-1 text-stone-500">
-                      <Mail className="h-3.5 w-3.5" />
-                      {customer.email}
-                    </span>
-                  )}
+                  <p className="mt-1 text-xs text-stone-500">
+                    {isTamil
+                      ? 'உங்கள் ஆர்டர்களைக் கண்காணிக்கவும் முகவரிகளைச் சேமிக்கவும் Google மூலம் உள்நுழையவும்.'
+                      : 'Sign in with Google to view order history, save addresses, and track orders.'}
+                  </p>
                 </div>
               </div>
+
+              <button
+                onClick={() => openAuthModal()}
+                className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-raakky-red px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark active:scale-95 transition-all flex-shrink-0"
+              >
+                <Lock className="h-4 w-4" />
+                <span>{isTamil ? 'Google மூலம் உள்நுழைக' : 'Sign in with Google'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6 overflow-hidden rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-raakky-red to-raakky-red-dark text-2xl font-black text-white shadow-md">
+                  {(customer?.name || firebaseUser?.displayName || 'R').charAt(0).toUpperCase()}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="font-heading text-2xl font-black text-neutral-900 sm:text-3xl">
+                      {customer?.name || firebaseUser?.displayName || (isTamil ? 'அன்புள்ள வாடிக்கையாளர்' : 'Valued Customer')}
+                    </h1>
+                  </div>
+
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
+                    {isPhoneVerified && customer?.phone && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-700">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        +91 {customer.phone} ({isTamil ? 'சரிபார்க்கப்பட்டது' : 'Verified'})
+                      </span>
+                    )}
+                    {(!customer?.phone || !isPhoneVerified) && (
+                      <button
+                        onClick={() => openAuthModal()}
+                        className="inline-flex items-center gap-1 rounded-full border border-raakky-red/20 bg-raakky-cream px-2.5 py-0.5 text-raakky-red hover:bg-red-50 transition-colors"
+                      >
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>{isTamil ? 'மொபைல் எண் இணைக்க' : 'Link Phone Number'}</span>
+                      </button>
+                    )}
+                    {(customer?.email || firebaseUser?.email) && (
+                      <span className="inline-flex items-center gap-1 text-stone-500">
+                        <Mail className="h-3.5 w-3.5" />
+                        {customer?.email || firebaseUser?.email}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-xs font-bold text-stone-700 hover:bg-stone-100"
+              >
+                {isEditing ? t('common.cancel') : (isTamil ? 'சுயவிவரம் மாற்ற' : 'Edit Profile')}
+              </button>
             </div>
 
-            <button
-              onClick={() => setIsEditing(!isEditing)}
-              className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-xs font-bold text-stone-700 hover:bg-stone-100"
-            >
-              {isEditing ? t('common.cancel') : (isTamil ? 'சுயவிவரம் மாற்ற' : 'Edit Profile')}
-            </button>
-          </div>
+            {/* Edit Profile inline form */}
+            {isEditing && (
+              <form onSubmit={handleSaveProfile} className="mt-6 border-t border-stone-100 pt-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-stone-700">
+                      {isTamil ? 'உங்கள் பெயர்' : 'Your Name'}
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none"
+                    />
+                  </div>
 
-          {/* Edit Profile inline form */}
-          {isEditing && (
-            <form onSubmit={handleSaveProfile} className="mt-6 border-t border-stone-100 pt-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-stone-700">
-                    {isTamil ? 'உங்கள் பெயர்' : 'Your Name'}
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none"
-                  />
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-stone-700">
+                      {isTamil ? 'மின்னஞ்சல்' : 'Email Address'}
+                    </label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-stone-700">
-                    {isTamil ? 'மின்னஞ்சல் (விருப்பத்தேர்வு)' : 'Email (Optional)'}
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none"
-                  />
+
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="rounded-2xl border border-stone-200 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-raakky-red px-5 py-2 text-xs font-bold text-white hover:bg-raakky-red-dark"
+                  >
+                    {t('common.save')}
+                  </button>
                 </div>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="submit"
-                  className="rounded-2xl bg-raakky-red px-5 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-raakky-red-dark"
-                >
-                  {t('common.save')}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
+              </form>
+            )}
+          </div>
+        )}
 
         {/* Section 1: Language Preference */}
         <div className="mb-6 rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm">
@@ -310,6 +371,27 @@ export const Profile: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                     className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:outline-none"
                   />
+                </div>
+                <div>
+                  <select
+                    value={formData.localityId}
+                    onChange={(e) => {
+                      const loc = SUPPORTED_LOCALITIES.find(l => l.id === e.target.value);
+                      setFormData({
+                        ...formData,
+                        localityId: e.target.value as DeliveryLocalityId,
+                        localityName: loc?.nameEn || e.target.value,
+                        pincode: loc?.defaultPincode || formData.pincode,
+                      });
+                    }}
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:outline-none"
+                  >
+                    {SUPPORTED_LOCALITIES.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {isTamil ? `${loc.nameTa} (${loc.nameEn})` : loc.nameEn}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <input
@@ -452,27 +534,29 @@ export const Profile: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 4: Logout */}
-        <div className="rounded-3xl border border-red-200 bg-red-50/50 p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="font-heading text-base font-bold text-red-900">
-                {isTamil ? 'வெளியேறு' : 'Sign Out'}
-              </h3>
-              <p className="text-xs text-red-700">
-                {isTamil ? 'உங்கள் கணக்கிலிருந்து வெளியேறலாம்' : 'Sign out from this customer device'}
-              </p>
-            </div>
+        {/* Section 4: Logout (Only shown if signed in) */}
+        {isAuthenticated && (
+          <div className="rounded-3xl border border-red-200 bg-red-50/50 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-heading text-base font-bold text-red-900">
+                  {isTamil ? 'வெளியேறு' : 'Sign Out'}
+                </h3>
+                <p className="text-xs text-red-700">
+                  {isTamil ? 'உங்கள் கணக்கிலிருந்து வெளியேறலாம்' : 'Sign out from this customer device'}
+                </p>
+              </div>
 
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-xs font-bold text-red-600 shadow-sm hover:bg-red-100 active:scale-95"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>{isTamil ? 'வெளியேறு' : 'Sign Out'}</span>
-            </button>
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-xs font-bold text-red-600 shadow-sm hover:bg-red-100 active:scale-95"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>{isTamil ? 'வெளியேறு' : 'Sign Out'}</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Logout Confirmation Dialog */}

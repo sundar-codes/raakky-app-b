@@ -1,6 +1,6 @@
 # The Raakky Chicken - Production Customer Ordering App (App B)
 # Cloudflare Pages & D1 Database Binding
-name = "raakky-customer-app"
+name = "raakky-app-b"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-11-01"
 
@@ -13,3 +13,49 @@ database_id = "1e7c05c7-608d-4aee-8977-20dedb4fc005"
 ENVIRONMENT = "production"
 STORE_PHONE = "+919843599030"
 STORE_CITY = "Coimbatore"
+FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+ALLOWED_ORIGINS = "https://raakky-app-b.pages.dev,https://raakky-app-a.pages.dev"
+VITE_FIREBASE_API_KEY = "AIzaSyASlbeK9AiKY0JYB1GxjjrzHH9sHqPobFw"
+VITE_FIREBASE_AUTH_DOMAIN = "raakky-chicken-auth.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+VITE_FIREBASE_STORAGE_BUCKET = "raakky-chicken-auth.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "171434842835"
+VITE_FIREBASE_APP_ID = "1:171434842835:web:5c0df0c3bc20edf669d226"
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "raakky-db"
+database_id = "1e7c05c7-608d-4aee-8977-20dedb4fc005"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+STORE_PHONE = "+919843599030"
+STORE_CITY = "Coimbatore"
+FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+ALLOWED_ORIGINS = "https://raakky-app-b.pages.dev,https://raakky-app-a.pages.dev"
+VITE_FIREBASE_API_KEY = "AIzaSyASlbeK9AiKY0JYB1GxjjrzHH9sHqPobFw"
+VITE_FIREBASE_AUTH_DOMAIN = "raakky-chicken-auth.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+VITE_FIREBASE_STORAGE_BUCKET = "raakky-chicken-auth.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "171434842835"
+VITE_FIREBASE_APP_ID = "1:171434842835:web:5c0df0c3bc20edf669d226"
+
+[env.preview]
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "raakky-db"
+database_id = "1e7c05c7-608d-4aee-8977-20dedb4fc005"
+
+[env.preview.vars]
+ENVIRONMENT = "preview"
+STORE_PHONE = "+919843599030"
+STORE_CITY = "Coimbatore"
+FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+ALLOWED_ORIGINS = "https://raakky-app-b.pages.dev,https://raakky-app-a.pages.dev"
+VITE_FIREBASE_API_KEY = "AIzaSyASlbeK9AiKY0JYB1GxjjrzHH9sHqPobFw"
+VITE_FIREBASE_AUTH_DOMAIN = "raakky-chicken-auth.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID = "raakky-chicken-auth"
+VITE_FIREBASE_STORAGE_BUCKET = "raakky-chicken-auth.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "171434842835"
+VITE_FIREBASE_APP_ID = "1:171434842835:web:5c0df0c3bc20edf669d226"

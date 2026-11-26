@@ -12,6 +12,7 @@ import {
   Scissors
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { useCart } from '../contexts/CartContext';
 import { OrderTimeline } from '../components/orders/OrderTimeline';
@@ -25,6 +26,7 @@ export const OrderStatus: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, isTamil, language } = useLanguage();
+  const { isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
   const { showSuccess, showError, showInfo, showWarning } = useNotification();
   const { addToCart } = useCart();
 
@@ -39,7 +41,12 @@ export const OrderStatus: React.FC = () => {
 
   // Fetch order data
   const fetchOrder = async (isBackground = false) => {
-    if (!id) return;
+    if (!id || authLoading) return;
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      setError(isTamil ? 'ஆர்டர் விவரங்களைக் காண உள்நுழையவும்.' : 'Please sign in to view your order status.');
+      return;
+    }
     if (!isBackground) setIsLoading(true);
     else setIsRefreshing(true);
 
@@ -64,7 +71,10 @@ export const OrderStatus: React.FC = () => {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     fetchOrder();
+
+    if (!isAuthenticated) return;
 
     // Poll every 5 seconds while order is active
     const interval = setInterval(() => {
@@ -75,7 +85,7 @@ export const OrderStatus: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [id, order?.status]);
+  }, [id, authLoading, isAuthenticated, order?.status]);
 
   const handleCancelOrder = async () => {
     if (!order) return;
@@ -163,13 +173,22 @@ export const OrderStatus: React.FC = () => {
         <p className="mt-2 text-sm text-stone-600">
           {error || 'Unable to locate this order.'}
         </p>
-        <Link
-          to="/orders"
-          className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-raakky-red px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-raakky-red-dark"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>{t('orders.viewAllOrders')}</span>
-        </Link>
+        {!isAuthenticated ? (
+          <button
+            onClick={() => openAuthModal()}
+            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-raakky-red px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-raakky-red-dark"
+          >
+            <span>{isTamil ? 'Google மூலம் உள்நுழைக' : 'Sign in with Google'}</span>
+          </button>
+        ) : (
+          <Link
+            to="/orders"
+            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-raakky-red px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-raakky-red-dark"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>{t('orders.viewAllOrders')}</span>
+          </Link>
+        )}
       </div>
     );
   }

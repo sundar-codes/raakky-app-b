@@ -1,14 +1,15 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ShopProvider } from './contexts/ShopContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { MobileBottomNav } from './components/layout/MobileBottomNav';
 import { ToastContainer } from './components/notifications/ToastContainer';
+import { AuthModal } from './components/dialogs/AuthModal';
 import { OfflineBanner } from './components/errors/OfflineBanner';
 import { ErrorBoundary } from './components/errors/ErrorBoundary';
 
@@ -24,6 +25,24 @@ import { Profile } from './pages/Profile';
 import { InstallApp } from './pages/InstallApp';
 import { NotFound } from './pages/NotFound';
 
+const AuthRedirectHandler: React.FC = () => {
+  const { pendingRedirectPath, clearPendingRedirectPath } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (pendingRedirectPath) {
+      const target = pendingRedirectPath;
+      clearPendingRedirectPath();
+      if (location.pathname !== target) {
+        navigate(target, { replace: true });
+      }
+    }
+  }, [pendingRedirectPath, clearPendingRedirectPath, navigate, location.pathname]);
+
+  return null;
+};
+
 export const App: React.FC = () => {
   return (
     <ErrorBoundary>
@@ -33,6 +52,7 @@ export const App: React.FC = () => {
             <AuthProvider>
               <CartProvider>
                 <BrowserRouter>
+                  <AuthRedirectHandler />
                   <div className="flex min-h-screen flex-col bg-stone-50 text-neutral-900 selection:bg-raakky-red/20 selection:text-raakky-red">
                     {/* Main Header (contains ToplineBanner & CartDrawer) */}
                     <Header />
@@ -65,6 +85,9 @@ export const App: React.FC = () => {
 
                     {/* Central Toast Notifications */}
                     <ToastContainer />
+
+                    {/* Global Customer Authentication & Phone Linking Modal */}
+                    <AuthModal />
                   </div>
                 </BrowserRouter>
               </CartProvider>

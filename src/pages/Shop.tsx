@@ -99,7 +99,7 @@ export const Shop: React.FC = () => {
                 p.id !== 'prod-curry-pieces' &&
                 p.id !== 'prod-biryani-cut' &&
                 p.id !== 'prod-with-bone' &&
-                !p.searchAliases.some((a) => a.toLowerCase().includes('curry'))
+                !(p.searchAliases || []).some((a) => a.toLowerCase().includes('curry'))
               ) {
                 return false;
               }
@@ -118,7 +118,7 @@ export const Shop: React.FC = () => {
               if (
                 p.id !== 'prod-leg' &&
                 p.id !== 'prod-thigh' &&
-                !p.searchAliases.some((a) => a.toLowerCase().includes('leg') || a.toLowerCase().includes('drumstick'))
+                !(p.searchAliases || []).some((a) => a.toLowerCase().includes('leg') || a.toLowerCase().includes('drumstick'))
               ) {
                 return false;
               }
@@ -126,13 +126,13 @@ export const Shop: React.FC = () => {
             case '65-fry':
               if (
                 p.id !== 'prod-chicken-65-fry' &&
-                !p.searchAliases.some((a) => a.toLowerCase().includes('65'))
+                !(p.searchAliases || []).some((a) => a.toLowerCase().includes('65'))
               ) {
                 return false;
               }
               break;
             case 'chukka':
-              if (!p.searchAliases.some((a) => a.toLowerCase().includes('chukka') || a.toLowerCase().includes('sukka'))) {
+              if (!(p.searchAliases || []).some((a) => a.toLowerCase().includes('chukka') || a.toLowerCase().includes('sukka'))) {
                 return false;
               }
               break;
@@ -140,7 +140,7 @@ export const Shop: React.FC = () => {
               if (
                 p.id !== 'prod-wings' &&
                 p.id !== 'prod-lollipop' &&
-                !p.searchAliases.some((a) => a.toLowerCase().includes('wing') || a.toLowerCase().includes('lollipop'))
+                !(p.searchAliases || []).some((a) => a.toLowerCase().includes('wing') || a.toLowerCase().includes('lollipop'))
               ) {
                 return false;
               }
@@ -163,14 +163,19 @@ export const Shop: React.FC = () => {
           }
         }
         // In stock filter
-        if (onlyInStock && (!p.isAvailable || !p.variants.some((v) => v.isAvailable))) {
+        const variants = Array.isArray(p.variants) ? p.variants : [];
+        if (onlyInStock && (!p.isAvailable || !variants.some((v) => v.isAvailable))) {
           return false;
         }
         // Search filter (name, description, and search aliases)
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
-          const matchEn = p.nameEn.toLowerCase().includes(q) || p.descriptionEn.toLowerCase().includes(q);
-          const matchTa = p.nameTa.toLowerCase().includes(q) || p.descriptionTa.toLowerCase().includes(q);
+          const matchEn =
+            (p.nameEn || '').toLowerCase().includes(q) ||
+            (p.descriptionEn || '').toLowerCase().includes(q);
+          const matchTa =
+            (p.nameTa || '').toLowerCase().includes(q) ||
+            (p.descriptionTa || '').toLowerCase().includes(q);
           const matchAliases = (p.searchAliases || []).some((alias) => alias.toLowerCase().includes(q));
 
           if (!matchEn && !matchTa && !matchAliases) return false;
@@ -178,7 +183,10 @@ export const Shop: React.FC = () => {
         return true;
       })
       .sort((a, b) => {
-        const getMinPrice = (prod: Product) => Math.min(...prod.variants.map((v) => v.price));
+        const getMinPrice = (prod: Product) => {
+          const vs = Array.isArray(prod.variants) ? prod.variants : [];
+          return vs.length > 0 ? Math.min(...vs.map((v) => v.price)) : 0;
+        };
         if (sortBy === 'price-asc') return getMinPrice(a) - getMinPrice(b);
         if (sortBy === 'price-desc') return getMinPrice(b) - getMinPrice(a);
         if (sortBy === 'name') {

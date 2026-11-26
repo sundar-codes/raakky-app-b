@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Minus, Plus, ShoppingBag, Trash2, X, AlertTriangle } from 'lucide-react';
 import { useCart } from '../../contexts/CartContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useShop } from '../../contexts/ShopContext';
 import { formatCurrency, formatWeight } from '../../utils/formatters';
@@ -16,6 +17,7 @@ interface CartDrawerProps {
 export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const { items, itemCount, subtotal, deliveryFee, finalTotal, isFreeDelivery, freeDeliveryRemaining, updateQuantity, removeItem } = useCart();
+  const { initiateCheckoutAuth } = useAuth();
   const { t, isTamil, language } = useLanguage();
   const { isPaused, pauseReason } = useShop();
 
@@ -25,7 +27,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose }) => {
 
   const handleCheckoutClick = () => {
     onClose();
-    navigate('/checkout');
+    initiateCheckoutAuth(navigate);
   };
 
   return (
