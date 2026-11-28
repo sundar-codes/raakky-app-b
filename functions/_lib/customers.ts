@@ -1,4 +1,5 @@
 import type { CustomerAddressRecord, D1Database, VerifiedFirebaseCustomer } from './types.ts';
+import { validateIndianPhoneNumber } from './phone.ts';
 
 export const ALLOWED_LOCALITIES: Record<string, { nameEn: string; defaultPincode: string }> = {
   'press-colony': { nameEn: 'Press Colony', defaultPincode: '641019' },
@@ -317,38 +318,65 @@ export async function updateCustomerProfileByUid(
     throw new CustomerApiError('Forbidden: Cannot modify customer UID', 403, 'FORBIDDEN_IDENTITY_EDIT');
   }
 
-  if (body.name !== undefined) {
-    const cleanedName = typeof body.name === 'string' ? body.name.trim() : '';
+  if (body.name !== undefined || body.phone !== undefined) {
+    const cleanedName =
+      typeof body.name === 'string' && body.name.trim().length > 0
+        ? body.name.trim()
+        : existing.name;
     if (!cleanedName || cleanedName.length < 2 || cleanedName.length > 80) {
       throw new CustomerApiError('Name must be between 2 and 80 characters', 400, 'INVALID_NAME');
     }
 
-    const effectivePhone = verified.phone || verified.selfReportedPhone || '';
+    let submittedUnverifiedPhone = '';
+    if (body.phone !== undefined && !verified.jwtPhoneVerified && !existing.phoneVerified) {
+      const phoneCheck = validateIndianPhoneNumber(body.phone);
+      if (!phoneCheck.isValid) {
+        throw new CustomerApiError(
+          phoneCheck.error || 'Please enter a valid 10-digit Indian mobile number with +91',
+          400,
+          'INVALID_PHONE'
+        );
+      }
+      submittedUnverifiedPhone = phoneCheck.e164;
+    }
+
+    const effectivePhone = verified.phone || submittedUnverifiedPhone || verified.selfReportedPhone || '';
     const isPhoneVerified = verified.jwtPhoneVerified;
 
-    await db
-      .prepare(
-        `UPDATE customers
-         SET name = ?,
-             email = ?,
-             email_verified = 1,
-             phone = CASE WHEN phone_verified = 1 THEN phone WHEN ? <> '' THEN ? ELSE phone END,
-             phone_verified = CASE WHEN phone_verified = 1 THEN 1 ELSE ? END,
-             is_phone_verified = CASE WHEN is_phone_verified = 1 THEN 1 ELSE ? END,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = ? AND firebase_uid = ?`
-      )
-      .bind(
-        cleanedName,
-        verified.email,
-        effectivePhone,
-        effectivePhone,
-        isPhoneVerified ? 1 : 0,
-        isPhoneVerified ? 1 : 0,
-        existing.id,
-        verified.uid
-      )
-      .run();
+    try {
+      await db
+        .prepare(
+          `UPDATE customers
+           SET name = ?,
+               email = ?,
+               email_verified = 1,
+               phone = CASE WHEN phone_verified = 1 THEN phone WHEN ? <> '' THEN ? ELSE phone END,
+               phone_verified = CASE WHEN phone_verified = 1 THEN 1 ELSE ? END,
+               is_phone_verified = CASE WHEN is_phone_verified = 1 THEN 1 ELSE ? END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND firebase_uid = ?`
+        )
+        .bind(
+          cleanedName,
+          verified.email,
+          effectivePhone,
+          effectivePhone,
+          isPhoneVerified ? 1 : 0,
+          isPhoneVerified ? 1 : 0,
+          existing.id,
+          verified.uid
+        )
+        .run();
+    } catch (err: any) {
+      if (String(err?.message || '').includes('UNIQUE')) {
+        throw new CustomerApiError(
+          'This phone number is associated with a different customer record.',
+          409,
+          'PHONE_CONFLICT'
+        );
+      }
+      throw err;
+    }
   }
 
   if (Array.isArray(body.addresses)) {

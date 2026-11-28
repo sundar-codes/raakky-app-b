@@ -21,6 +21,7 @@ import {
 
 export interface AuthModalOptions {
   reason?: string;
+  mode?: 'signin' | 'recovery';
   onSuccess?: () => void;
 }
 
@@ -97,7 +98,7 @@ export interface AuthContextType {
   logout: () => Promise<void>;
 
   // Profile & Address Management
-  updateProfile: (name: string, email?: string) => Promise<void>;
+  updateProfile: (name: string, email?: string, phone?: string) => Promise<void>;
   saveAddress: (address: Omit<CustomerAddress, 'id'>, editId?: string) => Promise<void>;
   deleteAddress: (addressId: string) => Promise<void>;
   setDefaultAddress: (addressId: string) => Promise<void>;
@@ -183,7 +184,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         id: user.uid,
         name: user.displayName || (isSameCustomer ? existingCustomer?.name : '') || 'Customer',
         email: user.email || (isSameCustomer ? existingCustomer?.email : undefined) || undefined,
-        phone: cleanPhone || (hasLinkedPhone && isSameCustomer ? existingCustomer?.phone || '' : ''),
+        phone: cleanPhone || (isSameCustomer ? existingCustomer?.phone || '' : ''),
         isPhoneVerified: hasLinkedPhone,
         addresses:
           savedAddresses.length > 0
@@ -218,7 +219,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          customerObj = syncedProfile;
+          customerObj = {
+            ...syncedProfile,
+            phone: syncedProfile.phone || (isSameCustomer ? existingCustomer?.phone || '' : ''),
+          };
           safeStorage.set(getAddressStorageKey(user.uid), syncedProfile.addresses);
         } catch (err: any) {
           const msg = String(err?.message || '');
@@ -745,20 +749,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Update profile
   const updateProfile = useCallback(
-    async (name: string, _email?: string) => {
+    async (name: string, _email?: string, phone?: string) => {
       if (!customer) return;
       const trimmedName = name.trim() || customer.name;
+      const cleanPhone = phone ? phone.replace(/\D/g, '').slice(-10) : undefined;
 
       if (firebaseUser?.emailVerified) {
-        const synced = await api.updateCustomerProfile({ name: trimmedName });
-        setCustomer(synced);
-        safeStorage.set(StorageKeys.CUSTOMER, synced);
+        const synced = await api.updateCustomerProfile({
+          name: trimmedName,
+          ...(cleanPhone && /^[6-9]\d{9}$/.test(cleanPhone) ? { phone: cleanPhone } : {}),
+        });
+        const merged = {
+          ...synced,
+          phone: synced.phone || cleanPhone || customer.phone,
+        };
+        setCustomer(merged);
+        safeStorage.set(StorageKeys.CUSTOMER, merged);
         return;
       }
 
       const updatedCustomer: Customer = {
         ...customer,
         name: trimmedName,
+        ...(cleanPhone && /^[6-9]\d{9}$/.test(cleanPhone) ? { phone: cleanPhone } : {}),
       };
       setCustomer(updatedCustomer);
       safeStorage.set(StorageKeys.CUSTOMER, updatedCustomer);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Phone, ShoppingBag, User, Download, ArrowLeft } from 'lucide-react';
 import { ToplineBanner } from './ToplineBanner';
 import { LanguageSelector } from '../navigation/LanguageSelector';
@@ -7,14 +7,25 @@ import { CartDrawer } from '../navigation/CartDrawer';
 import { useCart } from '../../contexts/CartContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { formatCurrency } from '../../utils/formatters';
 
 export const Header: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { itemCount, subtotal } = useCart();
   const { t, isTamil } = useLanguage();
   const { isAuthenticated } = useAuth();
+  const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  const handleInstallAction = async () => {
+    if (isInstallable) {
+      const outcome = await promptInstall();
+      if (outcome !== 'unavailable') return;
+    }
+    navigate('/install');
+  };
 
   const isProductPage = location.pathname.startsWith('/product/');
 
@@ -99,31 +110,35 @@ export const Header: React.FC = () => {
             >
               {isTamil ? 'கணக்கு' : 'Profile'}
             </Link>
-            <Link
-              to="/install"
-              className={`text-xs font-black uppercase tracking-wider flex items-center gap-1 px-3 py-1.5 rounded-full transition-colors ${
-                isActive('/install')
-                  ? 'bg-raakky-red text-white'
-                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-              }`}
-            >
-              <Download size={13} />
-              <span>{isTamil ? 'செயலி' : 'App'}</span>
-            </Link>
+            {!isInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallAction}
+                className={`text-xs font-black uppercase tracking-wider flex items-center gap-1 px-3 py-1.5 rounded-full transition-colors ${
+                  isActive('/install')
+                    ? 'bg-raakky-red text-white'
+                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                <Download size={13} />
+                <span>{isTamil ? 'நிறுவு' : 'Install App'}</span>
+              </button>
+            )}
           </nav>
 
           {/* Right Header Controls */}
           <div className="flex items-center gap-2 sm:gap-4">
             {/* Download App Pill (Visible on mobile header when not inside product page) */}
-            {!isProductPage && (
-              <Link
-                to="/install"
+            {!isProductPage && !isInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallAction}
                 className="flex sm:hidden items-center gap-1 px-2.5 py-1.5 rounded-xl bg-raakky-red/10 text-raakky-red border border-raakky-red/20 text-[11px] font-black uppercase tracking-tight active:scale-95 transition-transform"
-                title="Install Raakky Chicken App"
+                title="Install The Raakky Chicken App"
               >
                 <Download size={13} />
-                <span>{isTamil ? 'செயலி' : 'App'}</span>
-              </Link>
+                <span>{isTamil ? 'நிறுவு' : 'Install'}</span>
+              </button>
             )}
 
             {/* Language Selector: Desktop only on product page to prevent crowding on mobile */}

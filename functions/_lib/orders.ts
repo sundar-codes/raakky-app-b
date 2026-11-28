@@ -724,15 +724,31 @@ export async function listOrdersForCustomer(
   db: D1Database,
   verifiedUid: string
 ): Promise<ReturnType<typeof mapOrderRowsToDTO>[]> {
-  const { results: orderRows } = await db
-    .prepare(
-      `SELECT * FROM orders
-       WHERE firebase_uid = ?
-       ORDER BY created_at DESC
-       LIMIT 100`
-    )
+  const customerRow = await db
+    .prepare('SELECT id FROM customers WHERE firebase_uid = ? LIMIT 1')
     .bind(verifiedUid)
-    .all<Record<string, any>>();
+    .first<{ id: string }>();
+
+  const { results: orderRows } = customerRow?.id
+    ? await db
+        .prepare(
+          `SELECT * FROM orders
+           WHERE firebase_uid = ?
+              OR (firebase_uid IS NULL AND customer_id = ?)
+           ORDER BY created_at DESC
+           LIMIT 100`
+        )
+        .bind(verifiedUid, customerRow.id)
+        .all<Record<string, any>>()
+    : await db
+        .prepare(
+          `SELECT * FROM orders
+           WHERE firebase_uid = ?
+           ORDER BY created_at DESC
+           LIMIT 100`
+        )
+        .bind(verifiedUid)
+        .all<Record<string, any>>();
 
   if (!orderRows || orderRows.length === 0) return [];
 
@@ -768,7 +784,16 @@ export async function getCustomerOwnedOrder(
     throw new OrderApiError('Order not found', 404, 'ORDER_NOT_FOUND');
   }
 
-  if (String(orderRow.firebase_uid || '') !== verifiedUid) {
+  const customerRow = await db
+    .prepare('SELECT id FROM customers WHERE firebase_uid = ? LIMIT 1')
+    .bind(verifiedUid)
+    .first<{ id: string }>();
+
+  const ownsOrder =
+    String(orderRow.firebase_uid || '') === verifiedUid ||
+    (!orderRow.firebase_uid && Boolean(customerRow?.id) && String(orderRow.customer_id) === customerRow!.id);
+
+  if (!ownsOrder) {
     throw new OrderApiError('Forbidden: You do not have access to this order', 403, 'ORDER_FORBIDDEN');
   }
 
@@ -801,7 +826,16 @@ export async function cancelCustomerOwnedOrder(
     throw new OrderApiError('Order not found', 404, 'ORDER_NOT_FOUND');
   }
 
-  if (String(orderRow.firebase_uid || '') !== verifiedUid) {
+  const customerRow = await db
+    .prepare('SELECT id FROM customers WHERE firebase_uid = ? LIMIT 1')
+    .bind(verifiedUid)
+    .first<{ id: string }>();
+
+  const ownsOrder =
+    String(orderRow.firebase_uid || '') === verifiedUid ||
+    (!orderRow.firebase_uid && Boolean(customerRow?.id) && String(orderRow.customer_id) === customerRow!.id);
+
+  if (!ownsOrder) {
     throw new OrderApiError('Forbidden: Cannot cancel another customer order', 403, 'ORDER_FORBIDDEN');
   }
 

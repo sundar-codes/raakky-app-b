@@ -24,7 +24,6 @@ export const OrderHistory: React.FC = () => {
     customer,
     isAuthenticated,
     isEmailVerified,
-    isPhoneVerified,
     loading: authLoading,
     openAuthModal,
   } = useAuth();
@@ -39,7 +38,7 @@ export const OrderHistory: React.FC = () => {
   useEffect(() => {
     if (authLoading) return;
 
-    if (!isAuthenticated || !isEmailVerified || !isPhoneVerified) {
+    if (!isAuthenticated || !isEmailVerified) {
       setOrders([]);
       setLoadError(null);
       setIsLoading(false);
@@ -60,7 +59,7 @@ export const OrderHistory: React.FC = () => {
     };
 
     fetchOrders();
-  }, [authLoading, isAuthenticated, isEmailVerified, isPhoneVerified, customer?.id]);
+  }, [authLoading, isAuthenticated, isEmailVerified, customer?.id]);
 
   const handleReorder = async (order: Order, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -160,7 +159,7 @@ export const OrderHistory: React.FC = () => {
               <div key={idx} className="h-32 animate-pulse rounded-3xl bg-stone-200" />
             ))}
           </div>
-        ) : !isAuthenticated || !isEmailVerified || !isPhoneVerified ? (
+        ) : !isAuthenticated || !isEmailVerified ? (
           <div className="my-12 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-raakky-cream text-raakky-red">
               <Lock className="h-8 w-8" />
@@ -170,15 +169,19 @@ export const OrderHistory: React.FC = () => {
             </h3>
             <p className="mx-auto mt-2 max-w-sm text-sm text-stone-600">
               {isTamil
-                ? 'உங்கள் ஆர்டர்கள் உங்கள் சரிபார்க்கப்பட்ட Google கணக்கு மற்றும் மொபைல் எண்ணுடன் பாதுகாப்பாக இணைக்கப்பட்டுள்ளன.'
-                : 'Your orders are linked securely to your verified Google account and mobile number.'}
+                ? 'உங்கள் ஆர்டர்கள் உங்கள் Google கணக்குடன் பாதுகாப்பாக இணைக்கப்பட்டுள்ளன.'
+                : 'Your orders are saved under your Google account.'}
             </p>
             <button
-              onClick={() => openAuthModal()}
+              onClick={() => openAuthModal({
+                reason: isTamil
+                  ? 'உங்கள் முந்தைய ஆர்டர்களைக் காண Google மூலம் உள்நுழையவும்.'
+                  : 'Sign in with your Google account to access your order history.',
+              })}
               className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-raakky-red px-6 py-3 font-heading text-xs font-black uppercase tracking-wider text-white shadow-md hover:bg-raakky-red-dark"
             >
               <Lock className="h-4 w-4" />
-              <span>{isTamil ? 'சரிபார்க்கப்பட்ட கணக்கில் உள்நுழைக' : 'Sign in & Verify Phone'}</span>
+              <span>{isTamil ? 'Google மூலம் உள்நுழைக' : 'Sign in with Google'}</span>
             </button>
           </div>
         ) : loadError ? (

@@ -1,76 +1,94 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+let cachedDeferredPrompt: BeforeInstallPromptEvent | null = null;
+let cachedIsInstalled = false;
+const promptListeners = new Set<() => void>();
+
+function checkIsStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+
+if (typeof window !== 'undefined') {
+  cachedIsInstalled = checkIsStandalone();
+
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    cachedDeferredPrompt = e as BeforeInstallPromptEvent;
+    promptListeners.forEach((cb) => cb());
+  });
+
+  window.addEventListener('appinstalled', () => {
+    cachedIsInstalled = true;
+    cachedDeferredPrompt = null;
+    promptListeners.forEach((cb) => cb());
+  });
+}
+
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [hasPrompt, setHasPrompt] = useState<boolean>(() => Boolean(cachedDeferredPrompt));
+  const [isInstalled, setIsInstalled] = useState<boolean>(() => cachedIsInstalled || checkIsStandalone());
+  const [isInstalling, setIsInstalling] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
 
   useEffect(() => {
-    // Check if already running in standalone mode
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
+    setIsInstalled(cachedIsInstalled || checkIsStandalone());
+    setHasPrompt(Boolean(cachedDeferredPrompt));
 
-    setIsInstalled(isStandalone);
-
-    // Detect OS
     const ua = window.navigator.userAgent.toLowerCase();
-    const isIosDevice = /iphone|ipad|ipod/.test(ua);
-    const isAndroidDevice = /android/.test(ua);
-    setIsIOS(isIosDevice);
-    setIsAndroid(isAndroidDevice);
+    setIsIOS(/iphone|ipad|ipod/.test(ua));
+    setIsAndroid(/android/.test(ua));
 
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
+    const sync = () => {
+      setHasPrompt(Boolean(cachedDeferredPrompt));
+      setIsInstalled(cachedIsInstalled || checkIsStandalone());
+      if (cachedIsInstalled) {
+        setIsInstalling(false);
+      }
     };
 
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setIsInstallable(false);
-      setDeferredPrompt(null);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
+    promptListeners.add(sync);
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      promptListeners.delete(sync);
     };
   }, []);
 
-  const promptInstall = async (): Promise<boolean> => {
-    if (!deferredPrompt) return false;
+  const promptInstall = useCallback(async (): Promise<'accepted' | 'dismissed' | 'unavailable'> => {
+    if (!cachedDeferredPrompt) return 'unavailable';
     try {
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+      setIsInstalling(true);
+      await cachedDeferredPrompt.prompt();
+      const choiceResult = await cachedDeferredPrompt.userChoice;
       if (choiceResult.outcome === 'accepted') {
-        setIsInstalled(true);
-        setIsInstallable(false);
-        setDeferredPrompt(null);
-        return true;
+        cachedDeferredPrompt = null;
+        setHasPrompt(false);
+        // Do NOT claim installation completed until browser fires 'appinstalled' or standalone activates.
+        return 'accepted';
       }
-      return false;
+      setIsInstalling(false);
+      return 'dismissed';
     } catch (err) {
       console.warn('PWA install prompt failed:', err);
-      return false;
+      setIsInstalling(false);
+      return 'dismissed';
     }
-  };
+  }, []);
 
   return {
-    isInstallable,
+    isInstallable: hasPrompt && !isInstalled,
     isInstalled,
+    isInstalling,
     isIOS,
     isAndroid,
-    promptInstall
+    promptInstall,
   };
 }

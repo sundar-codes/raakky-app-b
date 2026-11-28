@@ -58,6 +58,8 @@ export const AuthModal: React.FC = () => {
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Reset or configure step when modal opens
+  const isRecoveryMode = authModalOptions?.mode === 'recovery';
+
   useEffect(() => {
     if (isAuthModalOpen) {
       setLocalError(null);
@@ -65,7 +67,7 @@ export const AuthModal: React.FC = () => {
       setOtpExpired(false);
       if (!firebaseUser) {
         setStep('google');
-      } else if (!isPhoneVerified) {
+      } else if (isRecoveryMode && !isPhoneVerified) {
         setStep('phone');
         if (customer?.phone) {
           setPhoneInput(customer.phone);
@@ -74,7 +76,7 @@ export const AuthModal: React.FC = () => {
         setStep('success');
       }
     }
-  }, [isAuthModalOpen, firebaseUser, isPhoneVerified, customer]);
+  }, [isAuthModalOpen, firebaseUser, isPhoneVerified, isRecoveryMode, customer]);
 
   // Handle countdown timer for OTP resend
   useEffect(() => {
@@ -120,15 +122,16 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        // If returning customer already has a linked phone number, advance to success
-        if (res.hasLinkedPhone) {
+        // Unless explicitly invoked for account recovery OTP verification,
+        // complete sign-in immediately after verified Google authentication without interrupting with OTP.
+        if (!isRecoveryMode || res.hasLinkedPhone) {
           setStep('success');
           setTimeout(() => {
             authModalOptions?.onSuccess?.();
             closeAuthModal();
-          }, 1200);
+          }, 900);
         } else {
-          // Verified email without linked phone -> request Indian mobile number
+          // Recovery fallback mode only -> request Indian mobile number for OTP linking
           setStep('phone');
         }
       })

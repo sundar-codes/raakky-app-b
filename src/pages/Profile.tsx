@@ -12,17 +12,15 @@ import {
   CheckCircle2,
   ShieldCheck,
   Clock,
-  Sparkles,
   Download,
-  QrCode,
   Lock,
-  AlertCircle
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog';
-import { CustomerAddress, DeliveryLocalityId } from '../types';
+import { DeliveryLocalityId } from '../types';
 import { SUPPORTED_LOCALITIES } from '../services/api';
 
 export const Profile: React.FC = () => {
@@ -37,13 +35,15 @@ export const Profile: React.FC = () => {
     updateProfile,
     saveAddress,
     deleteAddress,
-    setDefaultAddress,
   } = useAuth();
   const { showSuccess, showInfo, showError } = useNotification();
+  const { isInstallable, isInstalled, isInstalling, isIOS, promptInstall } = usePWAInstall();
+  const [showInstallFallback, setShowInstallFallback] = useState(false);
 
   // Profile edit state
   const [name, setName] = useState(customer?.name || '');
   const [email, setEmail] = useState(customer?.email || '');
+  const [contactPhone, setContactPhone] = useState(customer?.phone || '');
   const [isEditing, setIsEditing] = useState(false);
 
   // Address modal / addition state
@@ -69,7 +69,7 @@ export const Profile: React.FC = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await updateProfile(name, email);
+      await updateProfile(name, email, contactPhone);
       setIsEditing(false);
       showSuccess(
         'Profile Updated',
@@ -80,6 +80,14 @@ export const Profile: React.FC = () => {
     } catch (err: any) {
       showError('Update Failed', 'தோல்வியுற்றது', err.message, err.message);
     }
+  };
+
+  const handleInstallAction = async () => {
+    if (isInstallable) {
+      const outcome = await promptInstall();
+      if (outcome !== 'unavailable') return;
+    }
+    setShowInstallFallback((prev) => !prev);
   };
 
   const handleAddAddress = async (e: React.FormEvent) => {
@@ -169,13 +177,25 @@ export const Profile: React.FC = () => {
                         +91 {customer.phone} ({isTamil ? 'சரிபார்க்கப்பட்டது' : 'Verified'})
                       </span>
                     )}
-                    {(!customer?.phone || !isPhoneVerified) && (
+                    {!isPhoneVerified && customer?.phone && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-stone-100 px-2.5 py-0.5 text-stone-700">
+                        <Phone className="h-3.5 w-3.5 text-stone-500" />
+                        +91 {customer.phone} ({isTamil ? 'சரிபார்க்கப்படாதது' : 'Unverified'})
+                      </span>
+                    )}
+                    {!customer?.phone && (
                       <button
-                        onClick={() => openAuthModal()}
-                        className="inline-flex items-center gap-1 rounded-full border border-raakky-red/20 bg-raakky-cream px-2.5 py-0.5 text-raakky-red hover:bg-red-50 transition-colors"
+                        type="button"
+                        onClick={() => {
+                          setName(customer?.name || firebaseUser?.displayName || '');
+                          setEmail(customer?.email || firebaseUser?.email || '');
+                          setContactPhone('');
+                          setIsEditing(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-stone-50 px-2.5 py-0.5 text-stone-700 hover:border-raakky-red hover:text-raakky-red transition-colors"
                       >
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        <span>{isTamil ? 'மொபைல் எண் இணைக்க' : 'Link Phone Number'}</span>
+                        <Phone className="h-3.5 w-3.5" />
+                        <span>{isTamil ? 'மொபைல் எண் சேர்க்க' : 'Add Contact Number'}</span>
                       </button>
                     )}
                     {(customer?.email || firebaseUser?.email) && (
@@ -189,7 +209,12 @@ export const Profile: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() => {
+                  setName(customer?.name || firebaseUser?.displayName || '');
+                  setEmail(customer?.email || firebaseUser?.email || '');
+                  setContactPhone(customer?.phone || '');
+                  setIsEditing(!isEditing);
+                }}
                 className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-xs font-bold text-stone-700 hover:bg-stone-100"
               >
                 {isEditing ? t('common.cancel') : (isTamil ? 'சுயவிவரம் மாற்ற' : 'Edit Profile')}
@@ -199,7 +224,7 @@ export const Profile: React.FC = () => {
             {/* Edit Profile inline form */}
             {isEditing && (
               <form onSubmit={handleSaveProfile} className="mt-6 border-t border-stone-100 pt-6">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-xs font-bold text-stone-700">
                       {isTamil ? 'உங்கள் பெயர்' : 'Your Name'}
@@ -214,13 +239,30 @@ export const Profile: React.FC = () => {
 
                   <div>
                     <label className="mb-1 block text-xs font-bold text-stone-700">
+                      {isTamil ? 'மொபைல் எண் (+91)' : 'Mobile Number (+91)'}
+                    </label>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      disabled={isPhoneVerified}
+                      placeholder="10-digit number"
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none disabled:opacity-60"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-stone-700">
                       {isTamil ? 'மின்னஞ்சல்' : 'Email Address'}
                     </label>
                     <input
                       type="email"
+                      disabled
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 focus:border-raakky-red focus:bg-white focus:outline-none"
+                      className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-3.5 py-2 text-xs text-neutral-900 opacity-60 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -472,34 +514,71 @@ export const Profile: React.FC = () => {
             <div className="flex items-start gap-3.5">
               <img
                 src="/images/raakky-brand-badge.png"
-                alt="Raakky Logo"
+                alt="The Raakky Chicken"
                 className="w-12 h-12 object-contain rounded-2xl shadow-sm flex-shrink-0"
               />
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-heading text-base font-bold text-neutral-900">
-                    {isTamil ? 'ராக்கி சிக்கன் செயலியை நிறுவுங்கள்' : 'Install Raakky Chicken App'}
-                  </h3>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-raakky-red bg-raakky-red/10 px-2 py-0.5 rounded-full">
-                    {isTamil ? 'எளிது' : '1-Tap'}
-                  </span>
-                </div>
+                <h3 className="font-heading text-base font-bold text-neutral-900">
+                  {isTamil ? 'தி ராக்கி சிக்கன் செயலியை நிறுவுங்கள்' : 'The Raakky Chicken App'}
+                </h3>
                 <p className="text-xs text-stone-600 mt-0.5">
                   {isTamil
-                    ? 'உங்கள் மொபைல் முகப்புத் திரையில் சேருங்கள். நொடியில் நேரடி புதிய சிக்கன் ஆர்டர்!'
-                    : 'Add directly to your home screen for instant chicken ordering and status tracking.'}
+                    ? 'உங்கள் முகப்புத் திரையில் நிறுவி உடனுக்குடன் ஆர்டர் செய்யுங்கள்.'
+                    : 'Install directly on your phone for quick chicken ordering and tracking.'}
                 </p>
               </div>
             </div>
 
-            <Link
-              to="/install"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-raakky-red px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark active:scale-95 transition-all flex-shrink-0"
-            >
-              <Download className="h-4 w-4" />
-              <span>{isTamil ? 'நிறுவல் வழிமுறை' : 'Install / Download'}</span>
-            </Link>
+            {isInstalled ? (
+              <span className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white flex-shrink-0">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{isTamil ? 'நிறுவப்பட்டது' : 'Installed'}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleInstallAction}
+                disabled={isInstalling}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-raakky-red px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-spicy hover:bg-raakky-red-dark disabled:opacity-60 active:scale-95 transition-all flex-shrink-0"
+              >
+                <Download className="h-4 w-4" />
+                <span>
+                  {isInstalling
+                    ? isTamil
+                      ? 'நிறுவப்படுகிறது...'
+                      : 'Installing...'
+                    : isTamil
+                      ? 'செயலியை நிறுவு'
+                      : 'Install App'}
+                </span>
+              </button>
+            )}
           </div>
+
+          {!isInstalled && !isInstallable && showInstallFallback && (
+            <div className="mt-4 pt-4 border-t border-red-200/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-xs text-stone-700">
+                {isIOS
+                  ? isTamil
+                    ? 'Safari-இல் Share (⎋) → "Add to Home Screen" என்பதைத் தட்டவும்.'
+                    : 'In Safari, tap Share (⎋) and select "Add to Home Screen".'
+                  : isTamil
+                    ? 'உலாவி மெனுவில் "Install app" என்பதைத் தேர்ந்தெடுக்கவும் அல்லது மொபைலில் ஸ்கேன் செய்யவும்.'
+                    : 'Use your browser menu → "Install app", or scan with your phone camera.'}
+              </p>
+              <a
+                href="https://raakky-app-b.pages.dev"
+                className="flex-shrink-0 bg-white p-2 rounded-xl border border-stone-200"
+                title="https://raakky-app-b.pages.dev"
+              >
+                <img
+                  src="/images/raakky-app-qr.png"
+                  alt="The Raakky Chicken App QR Code"
+                  className="w-20 h-20 object-contain"
+                />
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Section 3: Shop Help & Operating Hours */}

@@ -999,6 +999,9 @@ export const api = {
     if (typeof updates.name === 'string') {
       payload.name = updates.name.trim();
     }
+    if (typeof updates.phone === 'string' && updates.phone.trim()) {
+      payload.phone = updates.phone.trim();
+    }
     if (Array.isArray(updates.addresses)) {
       payload.addresses = updates.addresses;
     }

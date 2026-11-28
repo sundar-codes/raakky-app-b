@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Truck, Flame, ShieldCheck, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useShop } from '../../contexts/ShopContext';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 export const PromoBannerCarousel: React.FC = () => {
   const navigate = useNavigate();
   const { isTamil } = useLanguage();
   const { settings } = useShop();
+  const { isInstallable, promptInstall } = usePWAInstall();
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -133,7 +135,11 @@ export const PromoBannerCarousel: React.FC = () => {
           return (
             <div
               key={banner.id}
-              onClick={() => {
+              onClick={async () => {
+                if (banner.id === 'mobile-app' && isInstallable) {
+                  const outcome = await promptInstall();
+                  if (outcome !== 'unavailable') return;
+                }
                 if ('link' in banner && banner.link) {
                   navigate(banner.link);
                 }
