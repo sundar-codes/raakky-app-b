@@ -5,7 +5,9 @@ import {
   CheckCircle2,
   Download,
   QrCode,
+  ShieldCheck,
   ShoppingBag,
+  Zap,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,7 +30,7 @@ export const InstallApp: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-stone-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <Link
             to="/"
@@ -108,25 +110,52 @@ export const InstallApp: React.FC = () => {
                   : 'Use your browser menu and choose "Install app" or "Add to Home screen".'}
             </p>
           )}
+        </div>
 
-          <div className="pt-4 border-t border-stone-100 flex flex-col items-center">
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-raakky-red mb-3">
-              <QrCode size={14} />
-              <span>{isTamil ? 'ஸ்கேன் செய்து திறக்கவும்' : 'Scan to Open Directly'}</span>
+        {/* QR Code Section for Counter or Desktop Users */}
+        <div className="rounded-3xl bg-white border border-stone-200/90 p-6 sm:p-8 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            <div className="space-y-3 text-center md:text-left">
+              <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-raakky-red bg-raakky-red/5 px-3 py-1 rounded-full">
+                <QrCode size={15} />
+                <span>{isTamil ? 'மொபைல் க்யூஆர் ஸ்கேன்' : 'Scan With Phone Camera'}</span>
+              </div>
+              <h2 className="font-heading font-black text-xl sm:text-2xl text-neutral-900">
+                {isTamil ? 'போன் கேமரா மூலம் ஸ்கேன் செய்து நிறுவுங்கள்' : 'Scan to Install Directly on Mobile'}
+              </h2>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                {isTamil
+                  ? 'கடை கவுண்டரில் உள்ள வாடிக்கையாளர்கள் அல்லது கணினியில் பார்ப்பவர்கள் உங்கள் போன் கேமரா மூலம் இந்த க்யூஆர் குறியீட்டை ஸ்கேன் செய்து உடனடியாக நிறுவிக்கொள்ளலாம்.'
+                  : 'Visiting from a desktop or at our Press Colony shop counter? Point your phone camera at this branded QR code to open and install the app instantly.'}
+              </p>
+              <div className="pt-2 flex items-center justify-center md:justify-start gap-4 text-xs font-bold text-stone-500">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck size={16} className="text-emerald-600" />
+                  {isTamil ? 'பாதுகாப்பானது' : 'Safe & Direct'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Zap size={16} className="text-amber-500" />
+                  {isTamil ? 'நொடியில் திறக்கும்' : 'Instant Loading'}
+                </span>
+              </div>
             </div>
-            <div className="p-2.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
-              <img
-                src="/images/raakky-app-qr.png"
-                alt="The Raakky Chicken App QR Code"
-                className="w-44 h-44 object-contain rounded-xl"
-              />
+
+            {/* QR Image with Raakky Center Badge */}
+            <div className="flex flex-col items-center justify-center p-4 bg-stone-50 rounded-2xl border border-stone-200/80">
+              <div className="p-3 bg-white rounded-2xl shadow-sm border border-stone-100">
+                <img
+                  src="/images/raakky-app-qr.png"
+                  alt="Raakky Chicken App QR Code"
+                  className="w-52 h-52 object-contain rounded-xl"
+                />
+              </div>
+              <a
+                href="https://raakky-app-b.pages.dev"
+                className="mt-3 text-[11px] font-mono text-stone-500 hover:text-raakky-red tracking-tight"
+              >
+                https://raakky-app-b.pages.dev
+              </a>
             </div>
-            <a
-              href="https://raakky-app-b.pages.dev"
-              className="mt-2.5 text-[11px] font-mono text-stone-500 hover:text-raakky-red"
-            >
-              https://raakky-app-b.pages.dev
-            </a>
           </div>
         </div>
       </div>
